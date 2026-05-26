@@ -1,10 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { Plus, CheckCircle2, History, ChefHat, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
+import { useDataStore, Ticket } from "@/stores/data-store";
 
 export const Route = createFileRoute("/kds")({
   head: () => ({
     meta: [
-      { title: "Kitchen Display — Arbor ERP" },
+      { title: "Kitchen Display — StayBite" },
       { name: "description", content: "Live kitchen order screen with realtime updates." },
     ],
   }),
@@ -12,37 +21,217 @@ export const Route = createFileRoute("/kds")({
 });
 
 function KdsPage() {
-  const tickets = [
-    { id: "T-4920", table: "T-08", items: ["1× Ribeye", "2× House Red"], elapsed: 4, urgent: false },
-    { id: "T-4921", table: "T-14", items: ["1× Salmon Tartare", "1× Water"], elapsed: 12, urgent: true },
-    { id: "T-4922", table: "Rm 304", items: ["1× Club Sandwich", "1× Espresso"], elapsed: 2, urgent: false },
-    { id: "T-4923", table: "T-02", items: ["4× Espresso"], elapsed: 1, urgent: false },
-  ];
+  const { kdsTickets, setKdsTickets, rooms, setRooms, tables, chargeTable, menuItems } = useDataStore();
+  const [open, setOpen] = useState(false);
+  const [table, setTable] = useState("");
+  const [itemsText, setItemsText] = useState("");
+  const [view, setView] = useState<"active" | "history">("active");
+
+  const [timeTick, setTimeTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeTick(t => t + 1);
+    }, 10000); // re-render every 10 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const getElapsedMinutes = (ticket: Ticket) => {
+    if (!ticket.createdAt) return ticket.elapsed || 0;
+    const diffMs = Date.now() - new Date(ticket.createdAt).getTime();
+    return Math.max(0, Math.floor(diffMs / 60000));
+  };
+
+  const handleAddTicket = () => {
+    if (!table || !itemsText) {
+      toast.error("Table and items are required.");
+      return;
+    }
+    const newItems = itemsText.split("\n").filter(i => i.trim());
+    if (newItems.length === 0) {
+      toast.error("Please enter at least one item.");
+      return;
+    }
+    const newTicket: Ticket = {
+      id: `T-${Math.floor(Math.random() * 1000) + 5000}`,
+      table,
+      items: newItems,
+      elapsed: 0,
+      urgent: false,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    setKdsTickets([...kdsTickets, newTicket]);
+    setOpen(false);
+    setTable("");
+    setItemsText("");
+    toast.success("Manual ticket sent to Kitchen!");
+  };
+
+  const markDone = (id: string) => {
+    setKdsTickets(kdsTickets.map(t => t.id === id ? { ...t, status: "completed" } : t));
+    
+    const ticket = kdsTickets.find(t => t.id === id);
+    if (!ticket) return;
+
+    // Calculate total cost of ticket items
+    let ticketCost = 0;
+    ticket.items.forEach(itemString => {
+      // itemString format: "2x Margherita Pizza"
+      const match = itemString.match(/^(\d+)x\s+(.*)$/);
+      if (match) {
+        const qty = parseInt(match[1]);
+        const name = match[2];
+        const menuItem = menuItems.find(m => m.name === name);
+        if (menuItem) {
+          ticketCost += (menuItem.price * qty);
+        }
+      }
+    });
+
+    if (ticket.table.startsWith("Rm ")) {
+      const roomNumber = ticket.table.replace("Rm ", "");
+      const updatedRooms = rooms.map(r => {
+        if (r.number === roomNumber) {
+          // If the order came from QR, it might not have a corresponding 'RoomOrder' yet.
+          // We can just add it as a completed order to the room folio.
+          const newOrder = {
+            id: `ORD-${Date.now()}`,
+            description: `QR Order: ${ticket.items.join(", ")}`,
+            amount: ticketCost,
+            time: new Date().toISOString(),
+            status: "completed" as const
+          };
+          return {
+            ...r,
+            orders: [...(r.orders || []), newOrder]
+          };
+        }
+        return r;
+      });
+      setRooms(updatedRooms);
+    } else if (ticket.table.startsWith("T-")) {
+      // Charge Table
+      chargeTable(ticket.table, ticketCost);
+    }
+    
+    toast.success(`Ticket ${id} marked as completed and billed to ${ticket.table}!`);
+  };
+
+  const deleteTicket = (id: string) => {
+    setKdsTickets(kdsTickets.filter(t => t.id !== id));
+    toast.success(`Ticket ${id} deleted permanently.`);
+  };
+
+  const displayedTickets = kdsTickets.filter(t => 
+    view === "active" ? t.status === "pending" : t.status === "completed"
+  );
+
   return (
     <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
-      <PageHeader title="Kitchen Display" description="Live order queue · auto-refresh" />
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        {tickets.map((t) => (
-          <div
-            key={t.id}
-            className={`rounded-xl ring-1 shadow-soft overflow-hidden ${
-              t.urgent ? "bg-warning/10 ring-warning/30" : "bg-card ring-border"
-            }`}
-          >
-            <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-              <span className="font-mono text-xs font-semibold">{t.id}</span>
-              <span className="text-[10px] font-medium text-muted-foreground">
-                {t.elapsed}m · {t.table}
-              </span>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Manual Ticket</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Table / Room</Label>
+              <Input value={table} onChange={(e) => setTable(e.target.value)} placeholder="e.g. T-12 or Rm 101" />
             </div>
-            <div className="p-4 space-y-1.5">
-              {t.items.map((i) => (
-                <p key={i} className="text-sm">{i}</p>
-              ))}
+            <div className="space-y-2">
+              <Label>Items (One per line)</Label>
+              <Textarea 
+                value={itemsText} 
+                onChange={(e) => setItemsText(e.target.value)} 
+                placeholder="1x Burger&#10;2x Fries" 
+                className="h-32"
+              />
             </div>
           </div>
-        ))}
-      </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddTicket}>Send Ticket</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <PageHeader 
+        title="Kitchen Display" 
+        description="Live order queue · auto-refresh" 
+        actions={
+          <div className="flex gap-3">
+            <div className="bg-muted/50 p-1 rounded-lg flex items-center border border-border">
+              <Button 
+                variant={view === "active" ? "secondary" : "ghost"} 
+                size="sm" 
+                className="h-8 gap-1.5 shadow-none"
+                onClick={() => setView("active")}
+              >
+                <ChefHat className="w-3.5 h-3.5" /> Active Queue
+              </Button>
+              <Button 
+                variant={view === "history" ? "secondary" : "ghost"} 
+                size="sm" 
+                className="h-8 gap-1.5 shadow-none"
+                onClick={() => setView("history")}
+              >
+                <History className="w-3.5 h-3.5" /> History
+              </Button>
+            </div>
+            <Button size="sm" className="gap-1.5 h-10" onClick={() => setOpen(true)}>
+              <Plus className="size-3.5" /> Manual Ticket
+            </Button>
+          </div>
+        }
+      />
+      
+      {displayedTickets.length === 0 ? (
+        <div className="h-64 flex flex-col items-center justify-center text-muted-foreground border border-dashed rounded-xl bg-card/50">
+          <ChefHat className="w-12 h-12 mb-3 opacity-20" />
+          <p>{view === "active" ? "No pending tickets. The kitchen is clear!" : "No completed tickets in history."}</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {displayedTickets.map((t) => (
+            <div
+              key={t.id}
+              className={`rounded-xl ring-1 shadow-soft overflow-hidden flex flex-col ${
+                t.status === "completed" 
+                  ? "bg-muted/30 ring-border opacity-70 grayscale-[30%]"
+                  : t.urgent 
+                    ? "bg-warning/10 ring-warning/30" 
+                    : "bg-card ring-border"
+              }`}
+            >
+              <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+                <span className="font-mono text-xs font-semibold">{t.id}</span>
+                <span className="text-[10px] font-medium text-muted-foreground">
+                  {t.status === "completed" ? "Done" : `${getElapsedMinutes(t)}m`} · {t.table}
+                </span>
+              </div>
+              <div className="p-4 space-y-1.5 flex-1">
+                {t.items.map((i, idx) => (
+                  <p key={idx} className={`text-sm font-medium ${t.status === "completed" ? "line-through text-muted-foreground" : ""}`}>{i}</p>
+                ))}
+              </div>
+              {t.status === "pending" ? (
+                <div className="p-3 bg-muted/30 border-t border-border flex justify-end">
+                  <Button size="sm" variant="secondary" className="gap-1.5 w-full bg-background" onClick={() => markDone(t.id)}>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-success" /> Mark Done
+                  </Button>
+                </div>
+              ) : (
+                <div className="p-3 bg-muted/30 border-t border-border flex justify-end">
+                  <Button size="sm" variant="destructive" className="gap-1.5 w-full bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteTicket(t.id)}>
+                    <Trash2 className="w-3.5 h-3.5" /> Delete Permanently
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

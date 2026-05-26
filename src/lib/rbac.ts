@@ -4,6 +4,8 @@
 export type Role =
   | "super_admin"
   | "owner"
+  | "manager"
+  | "staff"
   | "branch_manager"
   | "receptionist"
   | "cashier"
@@ -16,6 +18,8 @@ export type Role =
 export const ROLE_LABELS: Record<Role, string> = {
   super_admin: "Super Admin",
   owner: "Owner",
+  manager: "Manager",
+  staff: "Staff",
   branch_manager: "Branch Manager",
   receptionist: "Receptionist",
   cashier: "Cashier",
@@ -54,6 +58,8 @@ const ALL: Permission[] = [
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   super_admin: ALL,
   owner: ALL,
+  manager: ALL.filter((p) => p !== "branches.manage" && p !== "settings.edit"),
+  staff: ["dashboard.view", "rooms.view", "pos.use", "inventory.view"],
   branch_manager: ALL.filter((p) => p !== "branches.manage"),
   receptionist: ["dashboard.view","rooms.view","rooms.checkin","rooms.checkout","customers.view"],
   cashier: ["dashboard.view","pos.use","pos.refund","customers.view"],

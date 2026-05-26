@@ -9,14 +9,15 @@ interface Room {
 
 interface RoomStatusGridProps {
   rooms: Room[];
+  onRoomClick?: (room: Room) => void;
 }
 
 const STATUS_STYLES: Record<RoomStatus, string> = {
-  available: "bg-success/10 ring-success/20 text-success",
-  occupied: "bg-sidebar text-white ring-sidebar",
-  cleaning: "bg-warning/15 ring-warning/30 text-warning-foreground",
-  maintenance: "bg-destructive/10 ring-destructive/20 text-destructive",
-  reserved: "bg-chart-2/10 ring-chart-2/20 text-chart-2",
+  available: "bg-emerald-500/10 ring-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+  occupied: "bg-rose-500/10 ring-rose-500/20 text-rose-600 dark:text-rose-400",
+  cleaning: "bg-amber-500/10 ring-amber-500/20 text-amber-600 dark:text-amber-400",
+  maintenance: "bg-slate-500/10 ring-slate-500/20 text-slate-600 dark:text-slate-400",
+  reserved: "bg-indigo-500/10 ring-indigo-500/20 text-indigo-600 dark:text-indigo-400",
 };
 
 const LEGEND: Array<{ status: RoomStatus; label: string }> = [
@@ -27,13 +28,14 @@ const LEGEND: Array<{ status: RoomStatus; label: string }> = [
   { status: "maintenance", label: "Maintenance" },
 ];
 
-export function RoomStatusGrid({ rooms }: RoomStatusGridProps) {
+export function RoomStatusGrid({ rooms, onRoomClick }: RoomStatusGridProps) {
   return (
     <div>
       <div className="grid grid-cols-6 sm:grid-cols-8 lg:grid-cols-10 gap-2">
         {rooms.map((r) => (
           <button
             key={r.number}
+            onClick={() => onRoomClick?.(r)}
             className={cn(
               "aspect-square rounded-md ring-1 flex items-center justify-center font-mono text-xs font-semibold transition-transform hover:scale-105",
               STATUS_STYLES[r.status],

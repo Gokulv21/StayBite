@@ -2,36 +2,30 @@
 import type { RoomStatus } from "@/components/room-status-grid";
 
 export function mockRooms(): Array<{ number: string; status: RoomStatus }> {
-  const statuses: RoomStatus[] = ["available", "occupied", "cleaning", "maintenance", "reserved"];
-  const rooms: Array<{ number: string; status: RoomStatus }> = [];
-  for (let floor = 1; floor <= 3; floor++) {
-    for (let r = 1; r <= 10; r++) {
-      const num = `${floor}${r.toString().padStart(2, "0")}`;
-      // Weighted: more occupied/available than other states
-      const pool: RoomStatus[] = [
-        "occupied","occupied","occupied","available","available",
-        "available","reserved","cleaning","maintenance",
-      ];
-      rooms.push({ number: num, status: pool[(parseInt(num) + r) % pool.length] ?? statuses[0] });
-    }
-  }
-  return rooms;
+  return [
+    { number: "101", status: "occupied" },
+    { number: "102", status: "occupied" },
+    { number: "103", status: "cleaning" },
+    { number: "104", status: "available" },
+    { number: "105", status: "occupied" },
+    { number: "106", status: "maintenance" },
+    { number: "107", status: "available" },
+    { number: "108", status: "occupied" },
+    { number: "109", status: "available" },
+    { number: "110", status: "occupied" },
+  ];
 }
 
 export function mockRevenueSeries() {
-  const data = [];
-  const now = Date.now();
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date(now - i * 86_400_000);
-    const restaurant = 3000 + Math.round(Math.random() * 4000);
-    const rooms = 5000 + Math.round(Math.random() * 6000);
-    data.push({
-      day: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      restaurant,
-      rooms,
-    });
-  }
-  return data;
+  return [
+    { day: "Mon", rooms: 52000, restaurant: 18000 },
+    { day: "Tue", rooms: 54000, restaurant: 21000 },
+    { day: "Wed", rooms: 48000, restaurant: 19500 },
+    { day: "Thu", rooms: 61000, restaurant: 26000 },
+    { day: "Fri", rooms: 72000, restaurant: 31000 },
+    { day: "Sat", rooms: 76000, restaurant: 34000 },
+    { day: "Sun", rooms: 70000, restaurant: 29000 },
+  ];
 }
 
 export interface MockTxn {
@@ -45,11 +39,11 @@ export interface MockTxn {
 
 export function mockTransactions(): MockTxn[] {
   return [
-    { id: "PX-9021", guest: "Elena Rodriguez (Rm 304)", channel: "Room", status: "Completed", amount: 420.0, at: "10:41" },
-    { id: "PX-9022", guest: "Table 14 — Dinner", channel: "Restaurant", status: "Pending", amount: 184.2, at: "10:38" },
-    { id: "PX-9023", guest: "John Smith (Rm 102)", channel: "Room", status: "Completed", amount: 1205.0, at: "10:35" },
-    { id: "PX-9024", guest: "Walk-in #44", channel: "Bar", status: "Completed", amount: 64.5, at: "10:30" },
-    { id: "PX-9025", guest: "Table 03 — Lunch", channel: "Restaurant", status: "Refunded", amount: -42.0, at: "10:22" },
-    { id: "PX-9026", guest: "Aisha Khan (Rm 211)", channel: "Room", status: "Completed", amount: 880.0, at: "10:15" },
+    { id: "TXN-9012", guest: "Room 102 / Rajesh", channel: "Room", status: "Completed", amount: 6800, at: "09:20" },
+    { id: "TXN-9013", guest: "Table T-4", channel: "Restaurant", status: "Pending", amount: 1450, at: "10:05" },
+    { id: "TXN-9014", guest: "Room 108 / Priya", channel: "Bar", status: "Completed", amount: 890, at: "11:12" },
+    { id: "TXN-9015", guest: "Table T-9", channel: "Restaurant", status: "Refunded", amount: -420, at: "12:18" },
+    { id: "TXN-9016", guest: "Room 110 / Amit", channel: "Room", status: "Completed", amount: 9200, at: "13:04" },
+    { id: "TXN-9017", guest: "Table T-2", channel: "Restaurant", status: "Completed", amount: 2300, at: "14:37" },
   ];
 }

@@ -3,11 +3,12 @@ import {
   Outlet,
   createRootRouteWithContext,
   useRouter,
-  HeadContent,
-  Scripts,
+  useRouterState,
+  Navigate,
 } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { AppShell } from "@/components/layout/app-shell";
+import { useSession } from "@/stores/session-store";
 
 import appCss from "../styles.css?url";
 
@@ -58,56 +59,46 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1, maximum-scale=1" },
-      { title: "Arbor ERP — Hotel & Restaurant Operating System" },
-      {
-        name: "description",
-        content:
-          "Local-first POS, hotel management, kitchen display, inventory and accounting for multi-branch hospitality businesses.",
-      },
-      { name: "theme-color", content: "#0f172a" },
-    ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-      {
-        rel: "preconnect",
-        href: "https://fonts.googleapis.com",
-      },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap",
-      },
-    ],
-  }),
-  shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
 });
 
-function RootShell({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  );
-}
+import { useDataStore } from "@/stores/data-store";
+import { useEffect } from "react";
 
 function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
+  const user = useSession((s) => s.user);
+  const location = useRouterState({ select: (s) => s.location });
+  const isAuthRoute = location.pathname === "/login" || location.pathname === "/register";
+  const settings = useDataStore((s) => s.settings);
+
+  useEffect(() => {
+    const themeMode = settings?.themeMode || "dark";
+    const themePalette = settings?.themePalette || "indigo";
+    const root = document.documentElement;
+
+    // Toggle dark mode class
+    root.classList.toggle("dark", themeMode === "dark");
+
+    // Clean and apply palette class
+    const palettes = ["theme-gold", "theme-emerald", "theme-indigo", "theme-sunset", "theme-rose"];
+    palettes.forEach((p) => root.classList.remove(p));
+    root.classList.add(`theme-${themePalette}`);
+  }, [settings?.themeMode, settings?.themePalette]);
+
+  if (!user && !isAuthRoute) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user && isAuthRoute) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppShell />
+    <>
+      {isAuthRoute ? <Outlet /> : <AppShell />}
       <Toaster position="top-right" />
-    </QueryClientProvider>
+    </>
   );
 }

@@ -13,7 +13,10 @@ import { Route as StaffRouteImport } from './routes/staff'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RoomsRouteImport } from './routes/rooms'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as RegisterRouteImport } from './routes/register'
 import { Route as PosRouteImport } from './routes/pos'
+import { Route as MenuRouteImport } from './routes/menu'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as KdsRouteImport } from './routes/kds'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as CustomersRouteImport } from './routes/customers'
@@ -40,9 +43,24 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PosRoute = PosRouteImport.update({
   id: '/pos',
   path: '/pos',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MenuRoute = MenuRouteImport.update({
+  id: '/menu',
+  path: '/menu',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KdsRoute = KdsRouteImport.update({
@@ -77,7 +95,10 @@ export interface FileRoutesByFullPath {
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/kds': typeof KdsRoute
+  '/login': typeof LoginRoute
+  '/menu': typeof MenuRoute
   '/pos': typeof PosRoute
+  '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRoute
   '/settings': typeof SettingsRoute
@@ -89,7 +110,10 @@ export interface FileRoutesByTo {
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/kds': typeof KdsRoute
+  '/login': typeof LoginRoute
+  '/menu': typeof MenuRoute
   '/pos': typeof PosRoute
+  '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRoute
   '/settings': typeof SettingsRoute
@@ -102,7 +126,10 @@ export interface FileRoutesById {
   '/customers': typeof CustomersRoute
   '/inventory': typeof InventoryRoute
   '/kds': typeof KdsRoute
+  '/login': typeof LoginRoute
+  '/menu': typeof MenuRoute
   '/pos': typeof PosRoute
+  '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/rooms': typeof RoomsRoute
   '/settings': typeof SettingsRoute
@@ -116,7 +143,10 @@ export interface FileRouteTypes {
     | '/customers'
     | '/inventory'
     | '/kds'
+    | '/login'
+    | '/menu'
     | '/pos'
+    | '/register'
     | '/reports'
     | '/rooms'
     | '/settings'
@@ -128,7 +158,10 @@ export interface FileRouteTypes {
     | '/customers'
     | '/inventory'
     | '/kds'
+    | '/login'
+    | '/menu'
     | '/pos'
+    | '/register'
     | '/reports'
     | '/rooms'
     | '/settings'
@@ -140,7 +173,10 @@ export interface FileRouteTypes {
     | '/customers'
     | '/inventory'
     | '/kds'
+    | '/login'
+    | '/menu'
     | '/pos'
+    | '/register'
     | '/reports'
     | '/rooms'
     | '/settings'
@@ -153,7 +189,10 @@ export interface RootRouteChildren {
   CustomersRoute: typeof CustomersRoute
   InventoryRoute: typeof InventoryRoute
   KdsRoute: typeof KdsRoute
+  LoginRoute: typeof LoginRoute
+  MenuRoute: typeof MenuRoute
   PosRoute: typeof PosRoute
+  RegisterRoute: typeof RegisterRoute
   ReportsRoute: typeof ReportsRoute
   RoomsRoute: typeof RoomsRoute
   SettingsRoute: typeof SettingsRoute
@@ -190,11 +229,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/pos': {
       id: '/pos'
       path: '/pos'
       fullPath: '/pos'
       preLoaderRoute: typeof PosRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/menu': {
+      id: '/menu'
+      path: '/menu'
+      fullPath: '/menu'
+      preLoaderRoute: typeof MenuRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/kds': {
@@ -241,7 +301,10 @@ const rootRouteChildren: RootRouteChildren = {
   CustomersRoute: CustomersRoute,
   InventoryRoute: InventoryRoute,
   KdsRoute: KdsRoute,
+  LoginRoute: LoginRoute,
+  MenuRoute: MenuRoute,
   PosRoute: PosRoute,
+  RegisterRoute: RegisterRoute,
   ReportsRoute: ReportsRoute,
   RoomsRoute: RoomsRoute,
   SettingsRoute: SettingsRoute,

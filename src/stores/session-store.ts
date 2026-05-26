@@ -9,6 +9,7 @@ export interface SessionUser {
   name: string;
   email: string;
   role: Role;
+  status: "paid" | "unpaid";
   avatarUrl?: string;
 }
 
@@ -24,37 +25,37 @@ interface SessionState {
   activeBranchId: string | null;
   isOnline: boolean;
   login: (user: SessionUser, branches: Branch[]) => void;
+  register: (user: SessionUser, branches: Branch[]) => void;
   logout: () => void;
   setActiveBranch: (id: string) => void;
   setOnline: (online: boolean) => void;
+  addBranch: (branch: Branch) => void;
 }
-
-// Demo seed — replace with real auth response.
-const DEMO_USER: SessionUser = {
-  id: "u_001",
-  name: "Marcus Chen",
-  email: "marcus@arborhotels.com",
-  role: "owner",
-};
-const DEMO_BRANCHES: Branch[] = [
-  { id: "b_001", name: "Highland Park Manor", city: "Mumbai" },
-  { id: "b_002", name: "Coastal Retreat", city: "Goa" },
-  { id: "b_003", name: "Mountain Lodge", city: "Manali" },
-];
 
 export const useSession = create<SessionState>()(
   persist(
     (set) => ({
-      user: DEMO_USER,
-      branches: DEMO_BRANCHES,
-      activeBranchId: DEMO_BRANCHES[0].id,
+      user: null, // Start logged out
+      branches: [],
+      activeBranchId: null,
       isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
       login: (user, branches) =>
         set({ user, branches, activeBranchId: branches[0]?.id ?? null }),
-      logout: () => set({ user: null, activeBranchId: null }),
+      register: (user, branches) =>
+        set({ user, branches, activeBranchId: branches[0]?.id ?? null }),
+      logout: () => set({ user: null, activeBranchId: null, branches: [] }),
       setActiveBranch: (id) => set({ activeBranchId: id }),
       setOnline: (isOnline) => set({ isOnline }),
+      addBranch: (branch) => set((state) => ({
+        branches: [...state.branches, branch]
+      })),
     }),
-    { name: "hotel_pos_session" },
+    {
+      name: "staybite_session",
+      partialize: (state) => {
+        const { isOnline, ...rest } = state;
+        return rest;
+      },
+    },
   ),
 );
