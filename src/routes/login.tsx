@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Hotel, Eye, EyeOff } from "lucide-react";
+import { Hotel, Eye, EyeOff, Sparkles, ArrowRight } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -30,6 +30,37 @@ function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const login = useSession((s) => s.login);
   const navigate = useNavigate();
+
+  const handleQuickDemoLogin = async () => {
+    setIsLoading(true);
+    setEmail("demo@staybite.com");
+    setPassword("demo123");
+    
+    // Auto-seed clean starter rooms & menu items if currently empty
+    const store = useDataStore.getState();
+    if (store.rooms.length === 0) {
+      store.loadDemoStarterData();
+    }
+
+    const demoUser: SessionUser = {
+      id: "demo_001",
+      name: "Demo Hotel Manager",
+      email: "demo@staybite.com",
+      role: "owner",
+      status: "paid",
+    };
+
+    const jwtToken = await createJwtToken({
+      id: demoUser.id,
+      name: demoUser.name,
+      email: demoUser.email,
+      role: demoUser.role,
+    });
+
+    login(demoUser, [{ id: "b_demo", name: "Grand StayBite Resort & Spa", city: "Chennai" }], jwtToken);
+    toast.success("Welcome to StayBite Client Testing & Demo!");
+    navigate({ to: "/" });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +86,46 @@ function LoginPage() {
 
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    // 2. Master Owner Login Authentication
+    // 2. Demo / Customer Testing Login Authentication
+    if (cleanEmail === "demo@staybite.com" || cleanEmail === "demo" || cleanEmail === "test" || cleanEmail === "client@staybite.com") {
+      if (cleanPassword === "demo123" || cleanPassword === "staybite2026" || cleanPassword === "demo") {
+        RateLimiter.reset(cleanEmail);
+
+        // Auto-seed clean starter rooms & menu items if currently empty so client gets a full interactive demo
+        const store = useDataStore.getState();
+        if (store.rooms.length === 0) {
+          store.loadDemoStarterData();
+        }
+
+        const demoUser: SessionUser = {
+          id: "demo_001",
+          name: "Demo Hotel Manager",
+          email: "demo@staybite.com",
+          role: "owner",
+          status: "paid",
+        };
+
+        const jwtToken = await createJwtToken({
+          id: demoUser.id,
+          name: demoUser.name,
+          email: demoUser.email,
+          role: demoUser.role,
+        });
+
+        login(demoUser, [{ id: "b_demo", name: "Grand StayBite Resort & Spa", city: "Chennai" }], jwtToken);
+        logSecurityEvent("LOGIN_SUCCESS", { userId: demoUser.id, role: demoUser.role });
+        toast.success("Welcome to StayBite Client Testing & Demo!");
+        navigate({ to: "/" });
+        return;
+      } else {
+        const rateResult = RateLimiter.recordFailedAttempt(cleanEmail);
+        toast.error(`Invalid password. For client demo testing, use 'demo123'.`);
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    // 3. Master Owner Login Authentication
     if (cleanEmail === "gokie210402@gmail.com") {
       const isPasswordValid = await verifyPassword(cleanPassword, MASTER_OWNER_HASH);
 
@@ -175,12 +245,43 @@ function LoginPage() {
               </div>
             </div>
 
-            <div className="text-center mb-8">
+            <div className="text-center mb-6">
               <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">Welcome to StayBite</h1>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-2">Login-only platform for owner and staff operations.</p>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1.5">Enterprise Hospitality ERP, POS & Hotel Management Suite</p>
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-5">
+            {/* Customer Testing / Demo Box */}
+            <div className="mb-6 p-3.5 rounded-xl border border-primary/25 bg-primary/5 dark:bg-primary/10 text-left space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-xs text-primary flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" /> Client Demo & Testing Account
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/15 text-primary">Live Preview</span>
+              </div>
+              <div className="font-mono text-xs text-muted-foreground grid grid-cols-2 gap-2 bg-background/80 p-2.5 rounded-lg border border-border/60">
+                <div>
+                  <span className="text-[10px] font-sans font-semibold text-muted-foreground uppercase block">User / Email</span>
+                  <span className="text-foreground font-semibold">demo@staybite.com</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-sans font-semibold text-muted-foreground uppercase block">Password</span>
+                  <span className="text-foreground font-semibold">demo123</span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full text-xs h-8.5 bg-background hover:bg-primary hover:text-primary-foreground border-primary/30 transition-all font-medium flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                onClick={handleQuickDemoLogin}
+                disabled={isLoading}
+              >
+                <span>⚡ 1-Click Instant Demo Login</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email or Employee ID</Label>
                 <Input

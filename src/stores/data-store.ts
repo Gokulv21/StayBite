@@ -179,6 +179,7 @@ interface DataStore {
   updateSettings: (settings: Partial<AppSettings>) => void;
   decrementInventoryForOrder: (items: Array<{ name: string; qty: number }>) => void;
   resetAllData: () => void;
+  loadDemoStarterData: () => void;
 }
 
 const INITIAL_SETTINGS: AppSettings = {
@@ -348,6 +349,36 @@ export const useDataStore = create<DataStore>()(
         inventory: [],
         menuItems: [],
         cart: [],
+        transactions: [],
+        kdsTickets: [],
+      }),
+      loadDemoStarterData: () => set({
+        rooms: [
+          { number: "101", status: "available", type: "Standard AC", price: "2500", capacity: "2", size: "240", bedType: "Queen", view: "City View", smoking: "Non-Smoking", amenities: ["Free High-Speed WiFi", "Split AC", "Hot Water"], orders: [] },
+          { number: "102", status: "available", type: "Deluxe Suite", price: "4200", capacity: "2", size: "320", bedType: "King Bed", view: "Garden View", smoking: "Non-Smoking", amenities: ["Free High-Speed WiFi", "Mini-bar", "Smart TV", "Room Service"], orders: [] },
+          { number: "103", status: "available", type: "Standard AC", price: "2500", capacity: "2", size: "240", bedType: "Twin Beds", view: "Courtyard", smoking: "Non-Smoking", amenities: ["Free High-Speed WiFi", "Split AC"], orders: [] },
+          { number: "104", status: "available", type: "Executive Suite", price: "5500", capacity: "3", size: "420", bedType: "King + Single", view: "Temple View", smoking: "Non-Smoking", amenities: ["Free WiFi", "Balcony", "Bathtub", "Welcome Drink"], orders: [] },
+          { number: "201", status: "available", type: "Deluxe Suite", price: "4200", capacity: "3", size: "320", bedType: "King Bed", view: "City View", smoking: "Non-Smoking", amenities: ["Free WiFi", "Mini-bar"], orders: [] },
+          { number: "202", status: "available", type: "Standard AC", price: "2500", capacity: "2", size: "240", bedType: "Queen", view: "Garden", smoking: "Non-Smoking", amenities: ["Free WiFi"], orders: [] },
+        ],
+        tables: Array.from({ length: 8 }).map((_, i) => ({ id: `T-${i + 1}`, status: "available", billAmount: 0 })),
+        menuItems: [
+          { id: "M-101", name: "Chettinad Chicken Biryani", price: 280, categories: ["Biryani", "Dinner", "Non-Veg"], gst: 5, type: "Non-Veg", isAvailable: true },
+          { id: "M-102", name: "Seeraga Samba Mutton Biryani", price: 360, categories: ["Biryani", "Dinner", "Non-Veg"], gst: 5, type: "Non-Veg", isAvailable: true },
+          { id: "M-103", name: "Ghee Roast Masala Dosa", price: 140, categories: ["Tiffin", "Breakfast", "Veg"], gst: 5, type: "Veg", isAvailable: true },
+          { id: "M-104", name: "Crispy Chicken 65 Boneless", price: 210, categories: ["Starters", "Non-Veg"], gst: 5, type: "Non-Veg", isAvailable: true },
+          { id: "M-105", name: "Paneer Butter Masala", price: 220, categories: ["Curries", "Veg"], gst: 5, type: "Veg", isAvailable: true },
+          { id: "M-106", name: "Butter Naan (2 Pcs)", price: 70, categories: ["Breads", "Veg"], gst: 5, type: "Veg", isAvailable: true },
+          { id: "M-107", name: "Authentic Madras Filter Coffee", price: 45, categories: ["Beverages", "Hot Drinks", "Veg"], gst: 5, type: "Veg", isAvailable: true },
+        ],
+        inventory: [
+          { id: "INV-001", name: "Seeraga Samba Biryani Rice", category: "Food", quantity: 100, unit: "kg", status: "In Stock" },
+          { id: "INV-002", name: "Fresh Country Chicken", category: "Food", quantity: 30, unit: "kg", status: "In Stock" },
+          { id: "INV-003", name: "Pure Cow Ghee", category: "Food", quantity: 20, unit: "liters", status: "In Stock" },
+          { id: "INV-004", name: "Fresh Dairy Milk", category: "Beverage", quantity: 40, unit: "liters", status: "In Stock" },
+        ],
+        customers: [],
+        invoices: [],
         transactions: [],
         kdsTickets: [],
       }),
