@@ -27,7 +27,9 @@ export interface RoomData {
   guestsCount?: string;
   idType?: string;
   idNumber?: string;
+  checkinDate?: string;
   checkoutDate?: string;
+  nights?: number;
 }
 
 export interface Customer {
@@ -46,12 +48,15 @@ export interface Invoice {
   guestPhone: string;
   idType?: string;
   idNumber?: string;
+  checkinDate?: string;
   checkoutDate?: string;
+  nights?: number;
   roomRate: number;
   completedOrders: Array<{ description: string; amount: number }>;
   ordersTotal: number;
   grandTotal: number;
   paymentMethod: string;
+  splitPayments?: Array<{ method: string; amount: number }>;
   date: string;
 }
 
@@ -83,8 +88,14 @@ export interface MenuItem {
   name: string;
   price: number;
   categories?: string[];
+  /** Single category string — used by guest ordering portal */
+  category?: string;
   gst?: number;
   type?: "Veg" | "Non-Veg";
+  /** Convenience alias for type === "Veg" — used by guest ordering portal */
+  isVeg?: boolean;
+  /** Optional menu item description */
+  description?: string;
   isAvailable?: boolean;
 }
 
@@ -144,6 +155,7 @@ interface DataStore {
   setTables: (tables: TableData[]) => void;
   chargeTable: (tableId: string, amount: number) => void;
   clearTable: (tableId: string) => void;
+  transferTableToRoom: (tableId: string, roomNumber: string) => boolean;
   
   staffList: Staff[];
   setStaffList: (staff: Staff[]) => void;
@@ -166,143 +178,33 @@ interface DataStore {
   settings: AppSettings;
   updateSettings: (settings: Partial<AppSettings>) => void;
   decrementInventoryForOrder: (items: Array<{ name: string; qty: number }>) => void;
+  resetAllData: () => void;
 }
 
-const INITIAL_CUSTOMERS: Customer[] = [
-  {
-    id: "C-001",
-    name: "Rajesh Kumar",
-    phone: "9876543210",
-    email: "rajesh.k@gmail.com",
-    visits: 2,
-    loyalty: "Gold"
-  },
-  {
-    id: "C-002",
-    name: "Priya Sharma",
-    phone: "9123456789",
-    email: "priya.s@yahoo.com",
-    visits: 1,
-    loyalty: "Silver"
-  },
-  {
-    id: "C-003",
-    name: "Amit Patel",
-    phone: "8765432109",
-    email: "amit.p@outlook.com",
-    visits: 1,
-    loyalty: "Bronze"
-  }
-];
-
-const INITIAL_INVOICES: Invoice[] = [
-  {
-    invoiceNo: "INV-873641",
-    roomNumber: "102",
-    guestName: "Rajesh Kumar",
-    guestPhone: "9876543210",
-    idType: "Aadhar",
-    idNumber: "1234 5678 9012",
-    checkoutDate: "2026-05-10",
-    roomRate: 5000,
-    completedOrders: [
-      { description: "2× Wagyu Sliders", amount: 1200 },
-      { description: "1× Truffle Fries", amount: 500 }
-    ],
-    ordersTotal: 1700,
-    grandTotal: 6700,
-    paymentMethod: "Credit Card",
-    date: "10/05/2026"
-  },
-  {
-    invoiceNo: "INV-928135",
-    roomNumber: "204",
-    guestName: "Rajesh Kumar",
-    guestPhone: "9876543210",
-    idType: "Aadhar",
-    idNumber: "1234 5678 9012",
-    checkoutDate: "2026-05-18",
-    roomRate: 8000,
-    completedOrders: [],
-    ordersTotal: 0,
-    grandTotal: 8000,
-    paymentMethod: "UPI",
-    date: "18/05/2026"
-  },
-  {
-    invoiceNo: "INV-512943",
-    roomNumber: "105",
-    guestName: "Priya Sharma",
-    guestPhone: "9123456789",
-    idType: "Passport",
-    idNumber: "Z9876543",
-    checkoutDate: "2026-05-14",
-    roomRate: 3500,
-    completedOrders: [
-      { description: "1× Club Sandwich", amount: 350 },
-      { description: "1× Diet Coke", amount: 120 }
-    ],
-    ordersTotal: 470,
-    grandTotal: 3970,
-    paymentMethod: "Cash",
-    date: "14/05/2026"
-  },
-  {
-    invoiceNo: "INV-384102",
-    roomNumber: "301",
-    guestName: "Amit Patel",
-    guestPhone: "8765432109",
-    idType: "Driving License",
-    idNumber: "DL-1234567890",
-    checkoutDate: "2026-05-19",
-    roomRate: 12000,
-    completedOrders: [
-      { description: "Room Service - Dinner Deluxe", amount: 2500 }
-    ],
-    ordersTotal: 2500,
-    grandTotal: 14500,
-    paymentMethod: "Bank Transfer",
-    date: "19/05/2026"
-  }
-];
-
 const INITIAL_SETTINGS: AppSettings = {
-  hotelName: "StayBite Residency",
-  gstin: "33AAAAA1111A1Z1",
+  hotelName: "StayBite Suite",
+  gstin: "",
   taxRate: 18,
   autoDecrementInventory: true,
   lowStockThreshold: 5,
-  themeMode: "dark",
+  themeMode: "light",
   themePalette: "indigo"
 };
 
+const INITIAL_CUSTOMERS: Customer[] = [];
+const INITIAL_INVOICES: Invoice[] = [];
 const INITIAL_STAFF: Staff[] = [];
-
-const INITIAL_INVENTORY: InventoryItem[] = [
-  { id: "INV-001", name: "Potatoes", category: "Food", quantity: 150, unit: "kg", status: "In Stock" },
-  { id: "INV-002", name: "Burger Buns", category: "Food", quantity: 80, unit: "pcs", status: "In Stock" },
-  { id: "INV-003", name: "Wagyu Beef Patty", category: "Food", quantity: 60, unit: "pcs", status: "In Stock" },
-  { id: "INV-004", name: "Lettuce", category: "Food", quantity: 12, unit: "kg", status: "In Stock" },
-  { id: "INV-005", name: "Tomatoes", category: "Food", quantity: 25, unit: "kg", status: "In Stock" },
-  { id: "INV-006", name: "Diet Coke", category: "Beverage", quantity: 120, unit: "cans", status: "In Stock" },
-  { id: "INV-007", name: "Truffle Oil", category: "Food", quantity: 4, unit: "liters", status: "Low Stock" },
-  { id: "INV-008", name: "Hotel Bath Soap", category: "Supplies", quantity: 200, unit: "pcs", status: "In Stock" },
-  { id: "INV-009", name: "White Bed Sheets", category: "Supplies", quantity: 45, unit: "pcs", status: "In Stock" }
-];
-
+const INITIAL_INVENTORY: InventoryItem[] = [];
+const INITIAL_ROOMS: RoomData[] = [];
 const INITIAL_MENU: MenuItem[] = [];
 const INITIAL_TXNS: Transaction[] = [];
 const INITIAL_TICKETS: Ticket[] = [];
-const INITIAL_TABLES: TableData[] = Array.from({ length: 15 }).map((_, i) => ({
-  id: `T-${i + 1}`,
-  status: "available",
-  billAmount: 0
-}));
+const INITIAL_TABLES: TableData[] = [];
 
 export const useDataStore = create<DataStore>()(
   persist(
     (set) => ({
-      rooms: [],
+      rooms: INITIAL_ROOMS,
       setRooms: (rooms) => set({ rooms }),
       chargeRoom: (roomNumber, order) => set((state) => ({
         rooms: state.rooms.map(r => 
@@ -344,6 +246,29 @@ export const useDataStore = create<DataStore>()(
             : t
         )
       })),
+      transferTableToRoom: (tableId, roomNumber) => {
+        const state = useDataStore.getState();
+        const table = state.tables.find(t => t.id === tableId);
+        if (!table || table.billAmount <= 0) return false;
+        
+        const room = state.rooms.find(r => r.number === roomNumber && r.status === "occupied");
+        if (!room) return false;
+
+        const transferredOrder: RoomOrder = {
+          id: `TRF-${Date.now()}`,
+          description: `Transferred Restaurant Bill (${tableId})`,
+          amount: table.billAmount,
+          time: new Date().toISOString(),
+          status: "completed"
+        };
+
+        set((s) => ({
+          tables: s.tables.map(t => t.id === tableId ? { ...t, status: "available", billAmount: 0 } : t),
+          rooms: s.rooms.map(r => r.number === roomNumber ? { ...r, orders: [...(r.orders || []), transferredOrder] } : r)
+        }));
+
+        return true;
+      },
       
       inventory: INITIAL_INVENTORY,
       setInventory: (inventory) => set({ inventory }),
@@ -414,7 +339,26 @@ export const useDataStore = create<DataStore>()(
 
         return { inventory: updatedInventory };
       }),
+      resetAllData: () => set({
+        rooms: [],
+        customers: [],
+        invoices: [],
+        staffList: [],
+        tables: [],
+        inventory: [],
+        menuItems: [],
+        cart: [],
+        transactions: [],
+        kdsTickets: [],
+      }),
     }),
-    { name: "staybite_data" }
+    {
+      name: "staybite_data_v2",
+      onRehydrateStorage: () => () => {
+        if (typeof window !== "undefined" && window.localStorage) {
+          window.localStorage.removeItem("staybite_data");
+        }
+      },
+    }
   )
 );

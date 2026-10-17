@@ -1,5 +1,4 @@
-// Auth/session + active branch. Backend wiring (JWT, Spring Boot) is the
-// user's responsibility — this store provides the contract.
+// StayBite Long-Lived JWT Session Store (Instagram/Mobile App Persistent Auth)
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Role } from "@/lib/rbac";
@@ -21,11 +20,12 @@ export interface Branch {
 
 interface SessionState {
   user: SessionUser | null;
+  token: string | null;
   branches: Branch[];
   activeBranchId: string | null;
   isOnline: boolean;
-  login: (user: SessionUser, branches: Branch[]) => void;
-  register: (user: SessionUser, branches: Branch[]) => void;
+  login: (user: SessionUser, branches: Branch[], token?: string) => void;
+  register: (user: SessionUser, branches: Branch[], token?: string) => void;
   logout: () => void;
   setActiveBranch: (id: string) => void;
   setOnline: (online: boolean) => void;
@@ -35,15 +35,32 @@ interface SessionState {
 export const useSession = create<SessionState>()(
   persist(
     (set) => ({
-      user: null, // Start logged out
+      user: null,
+      token: null,
       branches: [],
       activeBranchId: null,
       isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
-      login: (user, branches) =>
-        set({ user, branches, activeBranchId: branches[0]?.id ?? null }),
-      register: (user, branches) =>
-        set({ user, branches, activeBranchId: branches[0]?.id ?? null }),
-      logout: () => set({ user: null, activeBranchId: null, branches: [] }),
+      
+      // Persistent Login (Stays logged in like Instagram/WhatsApp mobile apps)
+      login: (user, branches, token) =>
+        set({ 
+          user, 
+          token: token || null,
+          branches, 
+          activeBranchId: branches[0]?.id ?? null 
+        }),
+
+      register: (user, branches, token) =>
+        set({ 
+          user, 
+          token: token || null,
+          branches, 
+          activeBranchId: branches[0]?.id ?? null 
+        }),
+
+      // Explicit Logout only
+      logout: () => set({ user: null, token: null, activeBranchId: null, branches: [] }),
+      
       setActiveBranch: (id) => set({ activeBranchId: id }),
       setOnline: (isOnline) => set({ isOnline }),
       addBranch: (branch) => set((state) => ({
@@ -51,11 +68,11 @@ export const useSession = create<SessionState>()(
       })),
     }),
     {
-      name: "staybite_session",
+      name: "staybite_session_v2",
       partialize: (state) => {
         const { isOnline, ...rest } = state;
         return rest;
       },
-    },
-  ),
+    }
+  )
 );

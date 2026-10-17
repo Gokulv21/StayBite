@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { mockRevenueSeries, mockTransactions } from "@/lib/mock-data";
+import { mockTransactions } from "@/lib/mock-data";
 import { useSession } from "@/stores/session-store";
 import { useDataStore } from "@/stores/data-store";
 import { PaywallModal } from "@/components/paywall-modal";
@@ -44,34 +44,109 @@ function formatRs(value: number) {
 
 type RevenueRange = "week" | "month" | "year" | "custom";
 
-function buildRevenueSeries(range: RevenueRange, fromDate?: string, toDate?: string) {
-  const base = mockRevenueSeries();
-  if (range === "week") return base;
-  if (range === "month") {
-    return Array.from({ length: 4 }).map((_, index) => {
-      const item = base[index % base.length];
-      return { day: `W${index + 1}`, rooms: item.rooms * 7, restaurant: item.restaurant * 7 };
-    });
+type RevenuePoint = { day: string; rooms: number; restaurant: number };
+
+function parseDate(dateText: string) {
+  const parsed = new Date(dateText);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const parts = dateText.split("/");
+  if (parts.length === 3) {
+    const day = Number(parts[0]);
+    const month = Number(parts[1]);
+    const year = Number(parts[2]);
+    if (!Number.isNaN(day) && !Number.isNaN(month) && !Number.isNaN(year)) {
+      const d = new Date(year, month - 1, day);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
   }
+  return null;
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function buildRevenueSeries(
+  range: RevenueRange,
+  invoices: Array<{ date: string; checkoutDate?: string; grandTotal: number }>,
+  transactions: Array<{ date: string; description: string; type: string; amount: number }>,
+  fromDate?: string,
+  toDate?: string,
+) {
+  const now = new Date();
+  let start = startOfDay(new Date(now));
+  let end = startOfDay(new Date(now));
+
+  if (range === "week") {
+    start.setDate(end.getDate() - 6);
+  } else if (range === "month") {
+    start.setDate(end.getDate() - 29);
+  } else if (range === "year") {
+    start = new Date(end.getFullYear(), end.getMonth() - 11, 1);
+  } else {
+    const from = fromDate ? parseDate(fromDate) : null;
+    const to = toDate ? parseDate(toDate) : null;
+    if (!from || !to || from > to) return [];
+    start = startOfDay(from);
+    end = startOfDay(to);
+  }
+
+  const map = new Map<string, RevenuePoint>();
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const key = cursor.toISOString().slice(0, 10);
+    map.set(key, {
+      day:
+        range === "year"
+          ? cursor.toLocaleString("en-US", { month: "short" })
+          : cursor.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+      rooms: 0,
+      restaurant: 0,
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  invoices.forEach((inv) => {
+    const d = parseDate(inv.checkoutDate || inv.date);
+    if (!d) return;
+    const key = d.toISOString().slice(0, 10);
+    const slot = map.get(key);
+    if (slot) slot.rooms += inv.grandTotal || 0;
+  });
+
+  transactions.forEach((tx) => {
+    if (tx.type !== "Income") return;
+    const d = parseDate(tx.date);
+    if (!d) return;
+    const key = d.toISOString().slice(0, 10);
+    const slot = map.get(key);
+    if (!slot) return;
+    if (tx.description.toLowerCase().includes("restaurant") || tx.description.toLowerCase().includes("table")) {
+      slot.restaurant += tx.amount || 0;
+    } else if (!tx.description.toLowerCase().includes("checkout")) {
+      slot.restaurant += tx.amount || 0;
+    }
+  });
+
+  const points = Array.from(map.values());
   if (range === "year") {
-    return Array.from({ length: 12 }).map((_, index) => {
-      const item = base[index % base.length];
-      return {
-        day: new Date(2026, index, 1).toLocaleString("en-US", { month: "short" }),
-        rooms: item.rooms * 28,
-        restaurant: item.restaurant * 28,
-      };
+    const monthAgg = new Map<string, RevenuePoint>();
+    points.forEach((point) => {
+      const existing = monthAgg.get(point.day) ?? { day: point.day, rooms: 0, restaurant: 0 };
+      existing.rooms += point.rooms;
+      existing.restaurant += point.restaurant;
+      monthAgg.set(point.day, existing);
     });
+    return Array.from(monthAgg.values());
   }
-  if (fromDate && toDate) return base;
-  return base;
+  return points;
 }
 
 function DashboardPage() {
   const navigate = useNavigate();
   const txns = mockTransactions();
   const user = useSession((s) => s.user);
-  const { inventory, rooms: liveRooms, kdsTickets, tables, clearTable, transactions, setTransactions } = useDataStore();
+  const { inventory, rooms: liveRooms, kdsTickets, tables, clearTable, transactions, setTransactions, invoices } = useDataStore();
   const rooms = liveRooms;
   const table14 = tables.find((item) => item.id === "T-14");
   const table14Amount = table14?.billAmount ?? 0;
@@ -83,8 +158,8 @@ function DashboardPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const revenue = useMemo(
-    () => buildRevenueSeries(revenueRange, customFrom, customTo),
-    [revenueRange, customFrom, customTo],
+    () => buildRevenueSeries(revenueRange, invoices, transactions, customFrom, customTo),
+    [revenueRange, customFrom, customTo, invoices, transactions],
   );
 
   const filteredTxns = useMemo(() => {
@@ -105,8 +180,8 @@ function DashboardPage() {
       generated.push({
         id: "inv-warn",
         icon: <AlertTriangle className="size-4 text-amber-500" />,
-        title: "Inventory Warning",
-        message: `Running low on ${lowStock
+        title: "Low Stock Alert",
+        message: `Restock soon: ${lowStock
           .slice(0, 2)
           .map((i) => i.name)
           .join(", ")}.`,
@@ -119,8 +194,8 @@ function DashboardPage() {
       generated.push({
         id: "room-opp",
         icon: <Lightbulb className="size-4 text-primary" />,
-        title: "Revenue Opportunity",
-        message: `${vacantRooms.length} rooms are vacant. Run a walk-in promotion tonight.`,
+        title: "Vacant Rooms",
+        message: `${vacantRooms.length} rooms available now. Push offers to increase occupancy.`,
         bg: "bg-primary/10",
       });
     }
@@ -130,8 +205,8 @@ function DashboardPage() {
       generated.push({
         id: "kds-warn",
         icon: <TrendingUp className="size-4 text-rose-500" />,
-        title: "Kitchen Bottleneck",
-        message: `${pendingTickets.length} pending tickets may increase prep time.`,
+        title: "Kitchen Queue",
+        message: `${pendingTickets.length} tickets pending. Assign one extra chef now.`,
         bg: "bg-rose-500/10",
       });
     }
@@ -140,8 +215,8 @@ function DashboardPage() {
       generated.push({
         id: "all-good",
         icon: <Sparkles className="size-4 text-emerald-500" />,
-        title: "Optimal Performance",
-        message: "Operations are running smoothly with no predicted bottlenecks.",
+        title: "Operations Healthy",
+        message: "No urgent issues detected across rooms, kitchen, and stock.",
         bg: "bg-emerald-500/10",
       });
     }
@@ -227,12 +302,12 @@ function DashboardPage() {
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1600px] mx-auto">
       <PaywallModal open={paywallOpen} onOpenChange={setPaywallOpen} />
 
       <PageHeader
-        title={`Good evening, ${user?.name.split(" ")[0] ?? "there"}`}
-        description="Here is what is happening across your operations right now."
+        title={`Welcome, ${user?.name.split(" ")[0] ?? "there"} 👋`}
+        description="Live operations overview"
         actions={
           <>
             <Button variant="outline" size="sm" onClick={handleExport}>
@@ -245,34 +320,33 @@ function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KpiCard label="Daily Revenue" value={formatRs(latestDailyRevenue)} delta={0} hint="from latest trend day" />
-        <KpiCard label="Room Occupancy" value={`${occupancyPct}%`} delta={0} hint={`${occupied}/${rooms.length} rooms`} />
-        <KpiCard label="Completed Transactions" value={String(completedCount)} delta={0} hint={`${txns.length} total`} />
-        <KpiCard label="Pending Payments" value={formatRs(pendingAmount)} delta={0} hint={formatRs(totalTxnValue)} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <KpiCard label="Today's Revenue" value={formatRs(latestDailyRevenue)} delta={0} hint="latest trend" />
+        <KpiCard label="Occupancy" value={`${occupancyPct}%`} delta={0} hint={`${occupied}/${rooms.length} rooms`} />
+        <KpiCard label="Transactions" value={String(completedCount)} delta={0} hint={`${txns.length} total`} />
+        <KpiCard label="Pending" value={formatRs(pendingAmount)} delta={0} hint={formatRs(totalTxnValue)} />
       </div>
-      <div className="bg-card rounded-xl ring-1 ring-border p-4 mb-6">
-        <h2 className="text-sm font-semibold mb-3">Quick Shortcuts</h2>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => navigate({ to: "/rooms" })}>Add Room</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate({ to: "/rooms" })}>New Booking</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate({ to: "/inventory" })}>Add Inventory</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate({ to: "/menu" })}>Add Dish</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate({ to: "/menu" })}>Add Custom Item</Button>
+      <div className="bg-card rounded-xl ring-1 ring-border p-3 sm:p-4 mb-5">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2.5">Quick Shortcuts</h2>
+        <div className="flex flex-wrap gap-1.5">
+          <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => navigate({ to: "/rooms" })}>New Booking</Button>
+          <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => navigate({ to: "/rooms" })}>Add Room</Button>
+          <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => navigate({ to: "/inventory" })}>Add Stock</Button>
+          <Button size="sm" variant="outline" className="text-xs h-8" onClick={() => navigate({ to: "/pos" })}>Open POS</Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-6">
         <section className="xl:col-span-8 space-y-6">
-          <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-6">
-            <div className="flex items-center justify-between mb-6">
+          <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-base font-semibold">Revenue trend</h2>
-                <p className="text-xs text-muted-foreground">Rooms + Restaurant revenue analytics</p>
+                <h2 className="text-sm font-bold">Revenue Trend</h2>
+                <p className="text-xs text-muted-foreground">Rooms + Restaurant</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Select value={revenueRange} onValueChange={(value) => setRevenueRange(value as RevenueRange)}>
-                  <SelectTrigger className="h-8 w-[150px] text-xs">
+                  <SelectTrigger className="h-8 w-full sm:w-[140px] text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -283,10 +357,10 @@ function DashboardPage() {
                   </SelectContent>
                 </Select>
                 {revenueRange === "custom" && (
-                  <>
-                    <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 w-[140px] text-xs" />
-                    <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 w-[140px] text-xs" />
-                  </>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-8 text-xs flex-1" />
+                    <Input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-8 text-xs flex-1" />
+                  </div>
                 )}
               </div>
             </div>
@@ -322,32 +396,32 @@ function DashboardPage() {
           </div>
 
           <div className="bg-card rounded-xl ring-1 ring-border shadow-soft overflow-hidden">
-            <div className="px-6 py-4 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-border flex items-center justify-between gap-2">
               <div>
-                <h2 className="text-base font-semibold">Recent transactions</h2>
-                <p className="text-xs text-muted-foreground">Today - across all channels</p>
+                <h2 className="text-sm font-bold">Recent Transactions</h2>
+                <p className="text-xs text-muted-foreground">All channels today</p>
               </div>
-              <Button variant="ghost" size="sm" className="text-xs gap-1 w-fit" onClick={() => navigate({ to: "/accounting" })}>
+              <Button variant="ghost" size="sm" className="text-xs gap-1 shrink-0" onClick={() => navigate({ to: "/accounting" })}>
                 View all <ArrowUpRight className="size-3" />
               </Button>
             </div>
-            <div className="px-6 py-3 border-b border-border flex flex-col md:flex-row md:items-center gap-2">
-              <div className="relative md:w-72">
+            <div className="px-4 sm:px-6 py-2 sm:py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="relative w-full sm:w-64">
                 <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  className="pl-8 h-8 text-xs"
-                  placeholder="Search by transaction ID or guest"
+                  className="pl-8 h-8 text-xs w-full"
+                  placeholder="Search transactions..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 overflow-x-auto">
                 {(["All", "Room", "Restaurant", "Bar"] as const).map((channel) => (
                   <Button
                     key={channel}
                     size="sm"
                     variant={channelFilter === channel ? "secondary" : "ghost"}
-                    className="h-8 text-xs"
+                    className="h-7 text-xs shrink-0"
                     onClick={() => setChannelFilter(channel)}
                   >
                     {channel}
@@ -355,49 +429,61 @@ function DashboardPage() {
                 ))}
               </div>
             </div>
-            <table className="w-full text-left">
+            {/* Mobile card list */}
+            <div className="sm:hidden divide-y divide-border">
+              {filteredTxns.map((t) => (
+                <div key={t.id} className="px-4 py-3 flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm truncate">{t.guest}</span>
+                    <span className="font-mono text-sm font-bold shrink-0">{formatRs(Math.abs(t.amount))}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={t.status === "Completed" ? "default" : t.status === "Pending" ? "secondary" : "destructive"}
+                      className="text-[10px]"
+                    >{t.status}</Badge>
+                    <span className="text-xs text-muted-foreground">{t.channel}</span>
+                    <span className="text-xs text-muted-foreground ml-auto font-mono">{t.at}</span>
+                  </div>
+                </div>
+              ))}
+              {filteredTxns.length === 0 && (
+                <div className="px-4 py-8 text-center text-xs text-muted-foreground">No transactions match the filter.</div>
+              )}
+            </div>
+            {/* Desktop table */}
+            <table className="hidden sm:table w-full text-left">
               <thead className="bg-muted/40 border-b border-border">
                 <tr>
-                  <th className="px-6 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">ID</th>
-                  <th className="px-6 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Guest / Table</th>
-                  <th className="px-6 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Channel</th>
-                  <th className="px-6 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Amount</th>
-                  <th className="px-6 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Time</th>
+                  <th className="px-5 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">ID</th>
+                  <th className="px-5 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Guest / Table</th>
+                  <th className="px-5 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Channel</th>
+                  <th className="px-5 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className="px-5 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Amount</th>
+                  <th className="px-5 py-2.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-right">Time</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredTxns.map((t) => (
                   <tr key={t.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-6 py-3 font-mono text-xs text-muted-foreground">{t.id}</td>
-                    <td className="px-6 py-3 text-sm font-medium">{t.guest}</td>
-                    <td className="px-6 py-3 text-xs text-muted-foreground">{t.channel}</td>
-                    <td className="px-6 py-3">
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{t.id}</td>
+                    <td className="px-5 py-3 text-sm font-medium">{t.guest}</td>
+                    <td className="px-5 py-3 text-xs text-muted-foreground">{t.channel}</td>
+                    <td className="px-5 py-3">
                       <Badge
-                        variant={
-                          t.status === "Completed"
-                            ? "default"
-                            : t.status === "Pending"
-                              ? "secondary"
-                              : "destructive"
-                        }
+                        variant={t.status === "Completed" ? "default" : t.status === "Pending" ? "secondary" : "destructive"}
                         className="text-[10px] font-medium"
-                      >
-                        {t.status}
-                      </Badge>
+                      >{t.status}</Badge>
                     </td>
-                    <td className="px-6 py-3 text-sm font-mono font-medium text-right">
-                      {t.amount < 0 ? "-" : ""}
-                      {formatRs(Math.abs(t.amount))}
+                    <td className="px-5 py-3 text-sm font-mono font-medium text-right">
+                      {t.amount < 0 ? "-" : ""}{formatRs(Math.abs(t.amount))}
                     </td>
-                    <td className="px-6 py-3 text-xs font-mono text-muted-foreground text-right">{t.at}</td>
+                    <td className="px-5 py-3 text-xs font-mono text-muted-foreground text-right">{t.at}</td>
                   </tr>
                 ))}
                 {filteredTxns.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-xs text-muted-foreground">
-                      No transactions match the current filter.
-                    </td>
+                    <td colSpan={6} className="px-5 py-8 text-center text-xs text-muted-foreground">No transactions match the current filter.</td>
                   </tr>
                 )}
               </tbody>
@@ -410,9 +496,12 @@ function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="size-4 text-primary" />
-                <h2 className="text-base font-semibold">AI Operations Insights</h2>
+                <h2 className="text-base font-semibold">Operational Alerts</h2>
               </div>
             </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              Quick action suggestions based on stock, room availability, and kitchen queue.
+            </p>
             <div className="space-y-3">
               {insights.map((insight) => (
                 <div key={insight.id} className="flex gap-3 p-3 rounded-lg bg-muted/40 border border-border">

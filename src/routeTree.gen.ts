@@ -22,6 +22,7 @@ import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as CustomersRouteImport } from './routes/customers'
 import { Route as AccountingRouteImport } from './routes/accounting'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GuestRoomRoomNumberRouteImport } from './routes/guest.room.$roomNumber'
 
 const StaffRoute = StaffRouteImport.update({
   id: '/staff',
@@ -88,6 +89,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GuestRoomRoomNumberRoute = GuestRoomRoomNumberRouteImport.update({
+  id: '/guest/room/$roomNumber',
+  path: '/guest/room/$roomNumber',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -103,6 +109,7 @@ export interface FileRoutesByFullPath {
   '/rooms': typeof RoomsRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/guest/room/$roomNumber': typeof GuestRoomRoomNumberRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -118,6 +125,7 @@ export interface FileRoutesByTo {
   '/rooms': typeof RoomsRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/guest/room/$roomNumber': typeof GuestRoomRoomNumberRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,6 +142,7 @@ export interface FileRoutesById {
   '/rooms': typeof RoomsRoute
   '/settings': typeof SettingsRoute
   '/staff': typeof StaffRoute
+  '/guest/room/$roomNumber': typeof GuestRoomRoomNumberRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -151,6 +160,7 @@ export interface FileRouteTypes {
     | '/rooms'
     | '/settings'
     | '/staff'
+    | '/guest/room/$roomNumber'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/rooms'
     | '/settings'
     | '/staff'
+    | '/guest/room/$roomNumber'
   id:
     | '__root__'
     | '/'
@@ -181,6 +192,7 @@ export interface FileRouteTypes {
     | '/rooms'
     | '/settings'
     | '/staff'
+    | '/guest/room/$roomNumber'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -197,6 +209,7 @@ export interface RootRouteChildren {
   RoomsRoute: typeof RoomsRoute
   SettingsRoute: typeof SettingsRoute
   StaffRoute: typeof StaffRoute
+  GuestRoomRoomNumberRoute: typeof GuestRoomRoomNumberRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -292,6 +305,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/guest/room/$roomNumber': {
+      id: '/guest/room/$roomNumber'
+      path: '/guest/room/$roomNumber'
+      fullPath: '/guest/room/$roomNumber'
+      preLoaderRoute: typeof GuestRoomRoomNumberRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -309,6 +329,7 @@ const rootRouteChildren: RootRouteChildren = {
   RoomsRoute: RoomsRoute,
   SettingsRoute: SettingsRoute,
   StaffRoute: StaffRoute,
+  GuestRoomRoomNumberRoute: GuestRoomRoomNumberRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

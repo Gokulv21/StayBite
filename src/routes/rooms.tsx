@@ -3,13 +3,14 @@ import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { RoomStatusGrid } from "@/components/room-status-grid";
 import { Button } from "@/components/ui/button";
-import { Plus, Hotel, Trash2, Receipt, CreditCard, Sparkles, User, Phone, Users, FileText, Calendar, Printer, MessageCircle } from "lucide-react";
+import { Plus, Hotel, Trash2, Receipt, CreditCard, Sparkles, User, Phone, Users, FileText, Calendar, Printer, MessageCircle, ChefHat, QrCode, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDataStore, RoomData } from "@/stores/data-store";
+import { printElement } from "@/lib/print";
 
 export const Route = createFileRoute("/rooms")({
   head: () => ({
@@ -28,6 +29,8 @@ function RoomsPage() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [selectedQrRoom, setSelectedQrRoom] = useState<string>("all");
   const [selectedRoomDetails, setSelectedRoomDetails] = useState<RoomData | null>(null);
   const [invoiceDetails, setInvoiceDetails] = useState<any>(null);
 
@@ -38,8 +41,21 @@ function RoomsPage() {
   const [guestsCount, setGuestsCount] = useState("1");
   const [idType, setIdType] = useState("Aadhar");
   const [idNumber, setIdNumber] = useState("");
-  const [checkoutDate, setCheckoutDate] = useState("");
+  const [checkinDate, setCheckinDate] = useState(new Date().toISOString().split("T")[0]);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const [checkoutDate, setCheckoutDate] = useState(tomorrow.toISOString().split("T")[0]);
   const [selectedRoom, setSelectedRoom] = useState("");
+
+  // Room status filter for Housekeeping & Front Desk
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Split Payment states
+  const [paymentMethod, setPaymentMethod] = useState("Credit Card");
+  const [splitMethod1, setSplitMethod1] = useState("UPI");
+  const [splitAmount1, setSplitAmount1] = useState("");
+  const [splitMethod2, setSplitMethod2] = useState("Cash");
+  const [splitAmount2, setSplitAmount2] = useState("");
 
   // Room creation states
   const [newRoomNumber, setNewRoomNumber] = useState("");
@@ -53,7 +69,6 @@ function RoomsPage() {
   const [newRoomView, setNewRoomView] = useState("");
   const [newSmokingPolicy, setNewSmokingPolicy] = useState("Non-Smoking");
   const [newAmenities, setNewAmenities] = useState<string[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState("Credit Card");
 
   const AMENITIES_LIST = ["Free WiFi", "Air Conditioning", "Flat-screen TV", "Mini-bar", "Balcony", "Bathtub", "Kitchenette"];
   const BED_TYPES = ["King", "Queen", "Twin", "Single", "Bunk", "Sofa Cum Bed", "Custom"];
@@ -79,6 +94,10 @@ function RoomsPage() {
       return;
     }
 
+    const checkin = checkinDate || new Date().toISOString().split("T")[0];
+    const diffMs = new Date(checkoutDate).getTime() - new Date(checkin).getTime();
+    const stayNights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)) || 1);
+
     setRooms(rooms.map(r => r.number === selectedRoom ? { 
       ...r, 
       status: "occupied",
@@ -87,9 +106,11 @@ function RoomsPage() {
       guestsCount,
       idType,
       idNumber,
-      checkoutDate
+      checkinDate: checkin,
+      checkoutDate,
+      nights: stayNights,
     } : r));
-    toast.success(`Booking confirmed for ${guestName} in Room ${selectedRoom}!`);
+    toast.success(`Booking confirmed for ${guestName} in Room ${selectedRoom} (${stayNights} Night${stayNights > 1 ? 's' : ''})!`);
     setBookingOpen(false);
     setGuestName("");
     setGuestPhone("");
@@ -97,7 +118,10 @@ function RoomsPage() {
     setGuestsCount("1");
     setIdType("Aadhar");
     setIdNumber("");
-    setCheckoutDate("");
+    setCheckinDate(new Date().toISOString().split("T")[0]);
+    const tomorrowReset = new Date();
+    tomorrowReset.setDate(tomorrowReset.getDate() + 1);
+    setCheckoutDate(tomorrowReset.toISOString().split("T")[0]);
     setSelectedRoom("");
   };
 
@@ -160,19 +184,45 @@ function RoomsPage() {
     setDetailsOpen(false);
   };
 
-  // Checkout Calculations
-  const roomRate = selectedRoomDetails ? Number(selectedRoomDetails.price) || 0 : 0;
-  // Make sure to find the fresh room data from store to get the latest orders
+  const handleStatusUpdate = (status: RoomData["status"]) => {
+    if (!selectedRoomDetails) return;
+    setRooms(rooms.map((room) => (room.number === selectedRoomDetails.number ? { ...room, status } : room)));
+    setSelectedRoomDetails({ ...selectedRoomDetails, status });
+    toast.success(`Room ${selectedRoomDetails.number} status updated to ${status}.`);
+  };
+
+  // Checkout Calculations (Multi-Night duration + Restaurant orders)
   const activeRoom = selectedRoomDetails ? rooms.find(r => r.number === selectedRoomDetails.number) : null;
-  const roomOrders = activeRoom?.orders || [];
+  const nightlyRate = activeRoom ? Number(activeRoom.price) || 1000 : 0;
   
-  // Sum only restaurant orders marked as COMPLETED by the Kitchen KDS terminal
-  const completedOrders = roomOrders.filter(o => o.status === "completed");
-  const ordersTotal = completedOrders.reduce((sum, o) => sum + o.amount, 0);
-  const grandTotal = roomRate + ordersTotal;
+  const checkin = activeRoom?.checkinDate || new Date().toISOString().split("T")[0];
+  const checkout = activeRoom?.checkoutDate || checkin;
+  const stayNights = activeRoom?.nights || Math.max(1, Math.ceil((new Date(checkout).getTime() - new Date(checkin).getTime()) / (1000 * 60 * 60 * 24)) || 1);
+  const totalRoomTariff = nightlyRate * stayNights;
+  
+  const roomOrders = activeRoom?.orders || [];
+  const ordersTotal = roomOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+  const grandTotal = totalRoomTariff + ordersTotal;
 
   const handleProcessCheckout = () => {
     if (!activeRoom) return;
+
+    let finalPaymentMethod = paymentMethod;
+    let splitPaymentsData: Array<{ method: string; amount: number }> | undefined = undefined;
+
+    if (paymentMethod === "Split") {
+      const a1 = Number(splitAmount1) || 0;
+      const a2 = Number(splitAmount2) || 0;
+      if (Math.abs((a1 + a2) - grandTotal) > 0.01) {
+        toast.error(`Split amounts sum (₹${(a1 + a2).toFixed(2)}) must equal Grand Total (₹${grandTotal.toFixed(2)})!`);
+        return;
+      }
+      finalPaymentMethod = `Split: ${splitMethod1} (₹${a1}) + ${splitMethod2} (₹${a2})`;
+      splitPaymentsData = [
+        { method: splitMethod1, amount: a1 },
+        { method: splitMethod2, amount: a2 }
+      ];
+    }
     
     // Save invoice details for the printable receipt modal before wiping room state
     const currentInvoice = {
@@ -181,12 +231,16 @@ function RoomsPage() {
       guestPhone: activeRoom.guestPhone || "N/A",
       idType: activeRoom.idType,
       idNumber: activeRoom.idNumber,
+      checkinDate: checkin,
       checkoutDate: activeRoom.checkoutDate,
-      roomRate: roomRate,
-      completedOrders: completedOrders,
+      nights: stayNights,
+      roomRate: totalRoomTariff,
+      nightlyRate: nightlyRate,
+      completedOrders: roomOrders,
       ordersTotal: ordersTotal,
       grandTotal: grandTotal,
-      paymentMethod: paymentMethod,
+      paymentMethod: finalPaymentMethod,
+      splitPayments: splitPaymentsData,
       date: new Date().toLocaleDateString(),
       invoiceNo: `INV-${Date.now().toString().slice(-6)}`
     };
@@ -200,7 +254,7 @@ function RoomsPage() {
     } else {
       setCustomers([
         {
-          id: `C-00${customers.length + 1}`,
+          id: `C-${Date.now().toString(36).toUpperCase()}`,
           name: activeRoom.guestName || "Walk-In Guest",
           phone: activeRoom.guestPhone || "N/A",
           email: "N/A",
@@ -219,7 +273,9 @@ function RoomsPage() {
       guestPhone: currentInvoice.guestPhone,
       idType: currentInvoice.idType,
       idNumber: currentInvoice.idNumber,
+      checkinDate: currentInvoice.checkinDate,
       checkoutDate: currentInvoice.checkoutDate,
+      nights: currentInvoice.nights,
       roomRate: currentInvoice.roomRate,
       completedOrders: currentInvoice.completedOrders.map((o: any) => ({
         description: o.description,
@@ -228,6 +284,7 @@ function RoomsPage() {
       ordersTotal: currentInvoice.ordersTotal,
       grandTotal: currentInvoice.grandTotal,
       paymentMethod: currentInvoice.paymentMethod,
+      splitPayments: currentInvoice.splitPayments,
       date: currentInvoice.date
     };
     setInvoices([savedInvoice, ...invoices]);
@@ -242,21 +299,23 @@ function RoomsPage() {
       guestsCount: undefined,
       idType: undefined,
       idNumber: undefined,
-      checkoutDate: undefined
+      checkinDate: undefined,
+      checkoutDate: undefined,
+      nights: undefined
     } : r));
     
     // 2. Log Income to Accounting Ledger
     const newTx = {
       id: `TRX-${Date.now().toString().slice(-6)}`,
       date: new Date().toISOString().split("T")[0],
-      description: `Checkout - Room ${activeRoom.number}`,
+      description: `Checkout - Room ${activeRoom.number} (${stayNights} Night${stayNights > 1 ? 's' : ''})`,
       type: "Income" as const,
       amount: grandTotal,
-      method: paymentMethod,
+      method: finalPaymentMethod,
     };
     setTransactions([newTx, ...transactions]);
 
-    toast.success(`Payment of ₹${grandTotal.toFixed(2)} successful. Room is now cleaning.`);
+    toast.success(`Payment of ₹${grandTotal.toFixed(2)} successful via ${finalPaymentMethod}. Room is now cleaning.`);
     setCheckoutOpen(false);
     setDetailsOpen(false);
     setInvoiceOpen(true); // Open the printable invoice modal!
@@ -274,16 +333,16 @@ function RoomsPage() {
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1600px] mx-auto">
       
 
 
       {/* Booking Dialog */}
       <Dialog open={bookingOpen} onOpenChange={setBookingOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>New Guest Booking</DialogTitle>
-            <DialogDescription>Check-in details and guest registration form.</DialogDescription>
+        <DialogContent className="sm:max-w-[540px] max-h-[88vh] overflow-y-auto p-6 gap-5">
+          <DialogHeader className="border-b pb-3">
+            <DialogTitle className="text-lg font-bold">New Guest Booking</DialogTitle>
+            <DialogDescription className="text-xs">Check-in details and guest registration form.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-3">
             <div className="grid grid-cols-2 gap-4">
@@ -347,10 +406,14 @@ function RoomsPage() {
                 <Input value={idNumber} onChange={(e) => setIdNumber(e.target.value)} placeholder="Enter ID Details" />
               </div>
               <div className="space-y-2">
-                <Label className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Checkout Date *</Label>
-                <Input value={checkoutDate} onChange={(e) => setCheckoutDate(e.target.value)} type="date" />
+                <Label className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-primary" /> Check-in Date *</Label>
+                <Input value={checkinDate} onChange={(e) => setCheckinDate(e.target.value)} type="date" />
               </div>
               <div className="space-y-2">
+                <Label className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5 text-rose-500" /> Checkout Date *</Label>
+                <Input value={checkoutDate} onChange={(e) => setCheckoutDate(e.target.value)} type="date" />
+              </div>
+              <div className="space-y-2 col-span-2">
                 <Label>Assign Room *</Label>
                 <Select value={selectedRoom} onValueChange={setSelectedRoom}>
                   <SelectTrigger>
@@ -359,7 +422,7 @@ function RoomsPage() {
                   <SelectContent>
                     {rooms.filter(r => r.status === "available" || r.status === "cleaning").map((r) => (
                       <SelectItem key={r.number} value={r.number}>
-                        Room {r.number} ({r.status})
+                        Room {r.number} ({r.type || "Standard"} — {r.status})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -504,106 +567,206 @@ function RoomsPage() {
 
       {/* Room Details Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="sm:max-w-[480px]">
-          <DialogHeader>
-            <DialogTitle>Room {activeRoom?.number} Console</DialogTitle>
-            <DialogDescription className="flex items-center gap-1.5 mt-1.5">
-              Current Status: 
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${getStatusColor(activeRoom?.status)}`}>
+        <DialogContent className="sm:max-w-[620px] max-h-[88vh] overflow-y-auto p-6 gap-5">
+          <DialogHeader className="border-b pb-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold text-lg border border-primary/20">
+                  {activeRoom?.number}
+                </div>
+                <div>
+                  <DialogTitle className="text-lg font-bold">Room {activeRoom?.number} Console</DialogTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">{activeRoom?.type || "Standard"} Suite · Floor {activeRoom?.number?.charAt(0) || "1"}</p>
+                </div>
+              </div>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider border ${getStatusColor(activeRoom?.status)}`}>
                 {activeRoom?.status}
               </span>
-            </DialogDescription>
+            </div>
           </DialogHeader>
           
-          <div className="py-4 space-y-4 text-sm">
-            
+          <div className="space-y-4 text-sm">
             {/* Active Booking Guest Card */}
             {activeRoom?.status === "occupied" && activeRoom.guestName && (
-              <div className="bg-muted/40 p-4 rounded-xl border space-y-2">
-                <Label className="text-xs uppercase font-bold text-muted-foreground tracking-wider">Active Guest Information</Label>
-                <div className="grid grid-cols-2 gap-2 text-xs pt-1.5">
+              <div className="bg-card/70 dark:bg-muted/20 p-4 rounded-xl border border-border/80 shadow-xs space-y-3">
+                <div className="flex items-center justify-between border-b pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-primary" />
+                    <span className="text-xs uppercase font-bold text-foreground tracking-wider">Active Guest Folio</span>
+                  </div>
+                  <span className="text-[11px] font-mono bg-primary/10 text-primary px-2 py-0.5 rounded-md font-semibold">
+                    {activeRoom.guestsCount || "1"} Guest(s)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
                   <div>
-                    <span className="text-muted-foreground">Guest Name:</span>
-                    <p className="font-semibold text-sm">{activeRoom.guestName}</p>
+                    <span className="text-muted-foreground block mb-0.5">Guest Name</span>
+                    <p className="font-semibold text-sm text-foreground">{activeRoom.guestName}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Contact:</span>
-                    <p className="font-semibold text-sm">{activeRoom.guestPhone}</p>
+                    <span className="text-muted-foreground block mb-0.5">Contact Number</span>
+                    <p className="font-semibold text-sm text-foreground font-mono">{activeRoom.guestPhone}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">No. of Guests:</span>
-                    <p className="font-semibold">{activeRoom.guestsCount} Person(s)</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Checkout Date:</span>
-                    <p className="font-semibold text-rose-500">{activeRoom.checkoutDate}</p>
+                    <span className="text-muted-foreground block mb-0.5">Expected Checkout</span>
+                    <p className="font-semibold text-rose-500 font-mono">{activeRoom.checkoutDate}</p>
                   </div>
                   {activeRoom.idNumber && (
-                    <div className="col-span-2 border-t pt-1.5 mt-1 flex justify-between">
-                      <span className="text-muted-foreground">{activeRoom.idType}:</span>
-                      <span className="font-semibold font-mono">{activeRoom.idNumber}</span>
+                    <div>
+                      <span className="text-muted-foreground block mb-0.5">{activeRoom.idType || "ID Proof"}</span>
+                      <p className="font-semibold text-foreground font-mono truncate">{activeRoom.idNumber}</p>
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Room Parameters */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <div className="flex flex-col border-b pb-2">
-                <span className="text-muted-foreground text-xs">Room Type</span>
-                <span className="font-medium">{activeRoom?.type || "Standard"}</span>
-              </div>
-              <div className="flex flex-col border-b pb-2">
-                <span className="text-muted-foreground text-xs">Price/Night</span>
-                <span className="font-medium text-primary">₹{activeRoom?.price || "1000"}</span>
-              </div>
-              <div className="flex flex-col border-b pb-2">
-                <span className="text-muted-foreground text-xs">Capacity</span>
-                <span className="font-medium">{activeRoom?.capacity || "2"} Persons</span>
-              </div>
-              <div className="flex flex-col border-b pb-2">
-                <span className="text-muted-foreground text-xs">Bed Type</span>
-                <span className="font-medium">{activeRoom?.bedType || "Queen"}</span>
-              </div>
-              <div className="flex flex-col border-b pb-2">
-                <span className="text-muted-foreground text-xs">Size</span>
-                <span className="font-medium">{activeRoom?.size || "300"} sq ft</span>
-              </div>
-              <div className="flex flex-col border-b pb-2">
-                <span className="text-muted-foreground text-xs">View</span>
-                <span className="font-medium">{activeRoom?.view || "None"}</span>
-              </div>
-              <div className="flex flex-col border-b pb-2 col-span-2">
-                <span className="text-muted-foreground text-xs mb-1">Amenities</span>
-                <div className="flex flex-wrap gap-1">
-                  {activeRoom?.amenities?.length ? (
-                    activeRoom.amenities.map((am: string) => (
-                      <span key={am} className="bg-muted px-2 py-0.5 rounded text-[10px]">{am}</span>
-                    ))
-                  ) : (
-                    <span className="text-xs italic text-muted-foreground">No specific amenities listed</span>
-                  )}
+            {/* Active Restaurant Orders Folio */}
+            {activeRoom?.status === "occupied" && activeRoom.orders && activeRoom.orders.length > 0 && (
+              <div className="bg-card/70 dark:bg-muted/20 p-4 rounded-xl border border-border/80 shadow-xs space-y-3">
+                <div className="flex justify-between items-center border-b pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-emerald-500" />
+                    <span className="text-xs uppercase font-bold text-foreground tracking-wider">Restaurant & Bar Charges</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border border-emerald-500/20">
+                    <span>Total:</span>
+                    <span>₹{ordersTotal.toFixed(2)}</span>
+                  </div>
                 </div>
+                
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1 divide-y divide-border/40">
+                  {activeRoom.orders.map((ord, idx) => (
+                    <div key={idx} className="flex justify-between items-start text-xs pt-1.5 first:pt-0">
+                      <div className="flex-1 pr-3">
+                        <p className="font-medium text-foreground">{ord.description}</p>
+                        {ord.time && <span className="text-[10px] text-muted-foreground font-mono">{new Date(ord.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                      </div>
+                      <span className="font-mono font-semibold text-foreground shrink-0">₹{ord.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Room Specifications & Parameters */}
+            <div className="bg-muted/20 p-4 rounded-xl border border-border/60 space-y-3">
+              <span className="text-xs uppercase font-bold text-muted-foreground tracking-wider block">Room Specifications</span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div className="p-2.5 rounded-lg bg-background border">
+                  <span className="text-muted-foreground block text-[11px]">Tariff / Night</span>
+                  <span className="font-bold text-sm text-primary font-mono">₹{activeRoom?.price || "1000"}</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-background border">
+                  <span className="text-muted-foreground block text-[11px]">Room Type</span>
+                  <span className="font-semibold text-foreground">{activeRoom?.type || "Standard"}</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-background border">
+                  <span className="text-muted-foreground block text-[11px]">Capacity</span>
+                  <span className="font-semibold text-foreground">{activeRoom?.capacity || "2"} Persons</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-background border">
+                  <span className="text-muted-foreground block text-[11px]">Bed Configuration</span>
+                  <span className="font-semibold text-foreground">{activeRoom?.bedType || "Queen"}</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-background border">
+                  <span className="text-muted-foreground block text-[11px]">Room Size</span>
+                  <span className="font-semibold text-foreground">{activeRoom?.size || "300"} sq ft</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-background border">
+                  <span className="text-muted-foreground block text-[11px]">View & Policy</span>
+                  <span className="font-semibold text-foreground">{activeRoom?.view || "City"} · {activeRoom?.smoking || "Non-Smoking"}</span>
+                </div>
+              </div>
+
+              {/* Amenities */}
+              {activeRoom?.amenities && activeRoom.amenities.length > 0 && (
+                <div className="pt-2">
+                  <span className="text-[11px] text-muted-foreground block mb-1.5">Amenities</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeRoom.amenities.map((am: string) => (
+                      <span key={am} className="bg-background px-2.5 py-1 rounded-md text-[11px] font-medium border text-muted-foreground">
+                        {am}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* In-Room QR Dining Launcher & Standee Printer */}
+            <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20 shrink-0">
+                  <QrCode className="size-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-foreground block">In-Room Dining QR Menu</span>
+                  <span className="text-[11px] text-muted-foreground">Print tent card or open guest ordering portal</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                  onClick={() => {
+                    if (activeRoom?.number) {
+                      setSelectedQrRoom(activeRoom.number);
+                      setQrModalOpen(true);
+                    }
+                  }}
+                >
+                  <Printer className="size-3" /> Print Standee
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+                  onClick={() => {
+                    window.open(`/guest/room/${activeRoom?.number}`, "_blank");
+                  }}
+                >
+                  <ExternalLink className="size-3" /> Test Order
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick Status Update */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-card border">
+              <span className="text-xs font-medium text-foreground">Change Room Status</span>
+              <div className="w-[180px]">
+                <Select value={activeRoom?.status} onValueChange={(value) => handleStatusUpdate(value as RoomData["status"])}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="available">Available</SelectItem>
+                    <SelectItem value="occupied">Occupied</SelectItem>
+                    <SelectItem value="reserved">Reserved</SelectItem>
+                    <SelectItem value="cleaning">Cleaning</SelectItem>
+                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
           
-          <DialogFooter className="flex sm:justify-between items-center w-full gap-2">
-            <Button variant="destructive" size="sm" onClick={handleDeleteRoom} className="gap-2 shrink-0">
+          <DialogFooter className="flex flex-col sm:flex-row sm:justify-between items-center w-full gap-3 pt-3 border-t">
+            <Button variant="outline" size="sm" onClick={handleDeleteRoom} className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30 gap-1.5 w-full sm:w-auto">
               <Trash2 className="w-3.5 h-3.5" /> Delete Room
             </Button>
-            <div className="flex gap-2 justify-end w-full">
+            <div className="flex gap-2 justify-end w-full sm:w-auto">
               <Button variant="outline" size="sm" onClick={() => setDetailsOpen(false)}>Close</Button>
               
               {activeRoom?.status === "cleaning" && (
-                <Button size="sm" className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleMarkCleaned}>
+                <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleMarkCleaned}>
                   <Sparkles className="w-3.5 h-3.5" /> Mark Cleaned
                 </Button>
               )}
               
               {activeRoom?.status === "occupied" && (
-                <Button size="sm" className="gap-2 bg-rose-600 hover:bg-rose-700 text-white" onClick={() => { setDetailsOpen(false); setCheckoutOpen(true); }}>
+                <Button size="sm" className="gap-1.5 bg-primary text-primary-foreground shadow-sm hover:opacity-90" onClick={() => { setDetailsOpen(false); setCheckoutOpen(true); }}>
                   <Receipt className="w-3.5 h-3.5" /> Checkout & Bill
                 </Button>
               )}
@@ -614,78 +777,184 @@ function RoomsPage() {
 
       {/* Checkout & Bill Dialog */}
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="w-5 h-5 text-primary" /> Invoice: Room {activeRoom?.number}
-            </DialogTitle>
+        <DialogContent className="sm:max-w-[520px] max-h-[88vh] overflow-y-auto p-6 gap-5">
+          <DialogHeader className="border-b pb-4">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary border border-primary/20">
+                <Receipt className="w-5 h-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold">Checkout & Settle Bill</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Room {activeRoom?.number} · Guest: {activeRoom?.guestName || "Walk-In Guest"}</p>
+              </div>
+            </div>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="bg-muted/30 p-4 rounded-lg border border-border/50 text-sm">
-              <div className="flex justify-between items-center mb-2 pb-2 border-b border-border/50">
-                <span className="font-medium">Room Rate (1 Night)</span>
-                <span>₹{roomRate.toFixed(2)}</span>
+
+          <div className="space-y-4 py-1">
+            <div className="bg-card/70 dark:bg-muted/20 p-4 rounded-xl border border-border space-y-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block border-b pb-2">
+                Itemized Folio Summary
+              </span>
+              
+              {/* Room Rent (Multi-Night Calculation) */}
+              <div className="flex justify-between items-center text-sm py-1">
+                <div>
+                  <span className="font-medium text-foreground block">Room Tariff ({stayNights} Night{stayNights > 1 ? 's' : ''})</span>
+                  <span className="text-[11px] text-muted-foreground font-mono">₹{nightlyRate} / night × {stayNights} night{stayNights > 1 ? 's' : ''}</span>
+                </div>
+                <span className="font-mono font-semibold text-foreground">₹{totalRoomTariff.toFixed(2)}</span>
               </div>
               
-              {completedOrders.length > 0 ? (
-                <div className="space-y-2 mb-2 pb-2 border-b border-border/50">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Restaurant & Bar (Kitchen Served)</span>
-                  {completedOrders.map((order, idx) => (
-                    <div key={idx} className="flex justify-between items-start text-muted-foreground text-xs">
-                      <span className="w-3/4 pr-2">{order.description}</span>
-                      <span>₹{order.amount.toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              {/* Show warnings if there are pending orders that are NOT yet marked done */}
-              {roomOrders.length > completedOrders.length && (
-                <div className="text-[10px] text-amber-600 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20 mb-2">
-                  ⚠️ Note: {roomOrders.length - completedOrders.length} restaurant order(s) are still preparation-pending in KDS and are excluded from this checkout bill. Only served/completed dishes are billed.
+              {/* Restaurant Orders */}
+              {roomOrders.length > 0 && (
+                <div className="space-y-2 border-t pt-2.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <ChefHat className="w-3.5 h-3.5 text-primary" /> Restaurant & Bar Charges
+                    </span>
+                    <span className="text-xs font-mono font-bold text-primary">₹{ordersTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="space-y-1.5 pl-2 max-h-36 overflow-y-auto">
+                    {roomOrders.map((order, idx) => (
+                      <div key={idx} className="flex justify-between items-start text-xs text-muted-foreground">
+                        <span className="pr-3 leading-relaxed">{order.description}</span>
+                        <span className="font-mono font-medium shrink-0">₹{order.amount.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              <div className="flex justify-between items-center mt-3 pt-2 font-semibold text-base">
-                <span>Grand Total</span>
-                <span className="text-primary text-lg">₹{grandTotal.toFixed(2)}</span>
+              {/* Grand Total */}
+              <div className="flex justify-between items-center pt-3 border-t border-dashed">
+                <div>
+                  <span className="font-bold text-base text-foreground block">Grand Total Due</span>
+                  <span className="text-[11px] text-muted-foreground">Includes {stayNights} night(s) tariff & all orders</span>
+                </div>
+                <span className="text-2xl font-bold font-mono text-primary">₹{grandTotal.toFixed(2)}</span>
               </div>
             </div>
 
-            <div className="space-y-2 pt-2">
-              <Label>Payment Method</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger><SelectValue placeholder="Select method" /></SelectTrigger>
+            <div className="space-y-3">
+              <Label className="text-xs font-semibold">Payment Settlement Method</Label>
+              <Select value={paymentMethod} onValueChange={(val) => {
+                setPaymentMethod(val);
+                if (val === "Split") {
+                  const half = Math.floor(grandTotal / 2);
+                  setSplitAmount1(half.toString());
+                  setSplitAmount2((grandTotal - half).toFixed(2));
+                }
+              }}>
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Select method" />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Credit Card">Credit Card</SelectItem>
-                  <SelectItem value="Cash">Cash</SelectItem>
-                  <SelectItem value="UPI">UPI / Digital (QR Scan)</SelectItem>
-                  <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="Credit Card">💳 Credit / Debit Card</SelectItem>
+                  <SelectItem value="Cash">💵 Cash</SelectItem>
+                  <SelectItem value="UPI">📱 UPI / QR Scan</SelectItem>
+                  <SelectItem value="Bank Transfer">🏦 Bank Transfer</SelectItem>
+                  <SelectItem value="Split">✂️ Split Payment (Dual Mode)</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Split Payment Controls */}
+              {paymentMethod === "Split" && (
+                <div className="bg-muted/30 p-3.5 rounded-xl border border-primary/20 space-y-3 animate-in fade-in">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold uppercase tracking-wider text-primary">Split Billing Breakdown</span>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      className="h-6 text-[10px] px-2"
+                      onClick={() => {
+                        const half = (grandTotal / 2).toFixed(2);
+                        setSplitAmount1(half);
+                        setSplitAmount2((grandTotal - Number(half)).toFixed(2));
+                      }}
+                    >
+                      50 / 50 Split
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Method 1</Label>
+                      <Select value={splitMethod1} onValueChange={setSplitMethod1}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="UPI">UPI</SelectItem>
+                          <SelectItem value="Cash">Cash</SelectItem>
+                          <SelectItem value="Credit Card">Card</SelectItem>
+                          <SelectItem value="Bank Transfer">Transfer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input 
+                        placeholder="Amount" 
+                        type="number" 
+                        value={splitAmount1} 
+                        onChange={(e) => {
+                          const val = Number(e.target.value) || 0;
+                          setSplitAmount1(e.target.value);
+                          setSplitAmount2(Math.max(0, grandTotal - val).toFixed(2));
+                        }} 
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Method 2</Label>
+                      <Select value={splitMethod2} onValueChange={setSplitMethod2}>
+                        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Cash">Cash</SelectItem>
+                          <SelectItem value="Credit Card">Card</SelectItem>
+                          <SelectItem value="UPI">UPI</SelectItem>
+                          <SelectItem value="Bank Transfer">Transfer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input 
+                        placeholder="Amount" 
+                        type="number" 
+                        value={splitAmount2} 
+                        onChange={(e) => setSplitAmount2(e.target.value)} 
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between text-[11px] font-mono text-muted-foreground pt-1 border-t">
+                    <span>Allocated: ₹{((Number(splitAmount1) || 0) + (Number(splitAmount2) || 0)).toFixed(2)}</span>
+                    <span className={Math.abs(((Number(splitAmount1) || 0) + (Number(splitAmount2) || 0)) - grandTotal) < 0.01 ? "text-emerald-500 font-bold" : "text-rose-500 font-bold"}>
+                      Remaining: ₹{(grandTotal - ((Number(splitAmount1) || 0) + (Number(splitAmount2) || 0))).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* UPI Free Dynamic QR Code payments */}
             {paymentMethod === "UPI" && (
-              <div className="flex flex-col items-center justify-center p-4 border rounded-xl bg-muted/20 space-y-2 mt-3 animate-in fade-in">
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Dynamic Payment QR Code (Free)</p>
+              <div className="flex flex-col items-center justify-center p-4 border rounded-xl bg-muted/30 space-y-2.5 animate-in fade-in">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Dynamic Payment QR Code (UPI)</p>
                 <img 
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(
                     `upi://pay?pa=gokie210402@okaxis&pn=StayBite Residency&am=${grandTotal.toFixed(2)}&cu=INR&tn=Room ${activeRoom?.number} Bill`
                   )}`} 
                   alt="UPI QR Code" 
-                  className="w-36 h-36 border p-1 bg-white rounded shadow-sm"
+                  className="w-36 h-36 border p-2 bg-white rounded-xl shadow-xs"
                 />
-                <span className="text-[10px] text-muted-foreground text-center max-w-[250px]">
-                  Scan using GPay, Paytm, or PhonePe. Zero processing charges apply.
+                <span className="text-[11px] text-muted-foreground text-center max-w-[280px]">
+                  Scan using GPay, PhonePe, or Paytm. Zero processing charges apply.
                 </span>
               </div>
             )}
           </div>
-          <DialogFooter>
+
+          <DialogFooter className="flex gap-2 pt-2 border-t">
             <Button variant="outline" onClick={() => setCheckoutOpen(false)}>Cancel</Button>
-            <Button className="gap-2 bg-primary" onClick={handleProcessCheckout}>
-              <CreditCard className="w-4 h-4" /> Process Payment
+            <Button className="gap-2 bg-primary text-primary-foreground font-semibold" onClick={handleProcessCheckout}>
+              <CreditCard className="w-4 h-4" /> Process Settlement (₹{grandTotal.toFixed(2)})
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -693,7 +962,7 @@ function RoomsPage() {
 
       {/* Invoice Receipt Modal */}
       <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
-        <DialogContent className="max-w-[450px] p-0 overflow-hidden ring-1 ring-border shadow-2xl">
+        <DialogContent className="max-w-[480px] max-h-[90vh] overflow-y-auto p-0 ring-1 ring-border shadow-2xl rounded-2xl">
           <div id="print-area" className="p-6 bg-white text-zinc-950 space-y-6">
             
             {/* Invoice Header */}
@@ -739,7 +1008,12 @@ function RoomsPage() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Itemized Billing Description</span>
               <div className="space-y-2 text-xs text-zinc-800">
                 <div className="flex justify-between items-center py-1">
-                  <span>Room Tariff Rate (1 Night)</span>
+                  <div>
+                    <span>Room Tariff ({invoiceDetails?.nights || 1} Night{(invoiceDetails?.nights || 1) > 1 ? 's' : ''})</span>
+                    {invoiceDetails?.nightlyRate && (
+                      <span className="text-[10px] text-zinc-500 block font-mono">@ ₹{invoiceDetails.nightlyRate} / night</span>
+                    )}
+                  </div>
                   <span className="font-semibold font-mono">₹{invoiceDetails?.roomRate?.toFixed(2)}</span>
                 </div>
                 
@@ -793,29 +1067,171 @@ function RoomsPage() {
             <Button variant="outline" size="sm" onClick={() => setInvoiceOpen(false)}>
               Close
             </Button>
-            <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => window.print()}>
+            <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => printElement("print-area", `Invoice - ${invoiceDetails?.invoiceNo || "Receipt"}`)}>
               <Printer className="w-3.5 h-3.5" /> Print Invoice
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Room QR Standee & Menu Cards Modal */}
+      <Dialog open={qrModalOpen} onOpenChange={setQrModalOpen}>
+        <DialogContent className="max-w-[560px] max-h-[92vh] overflow-y-auto p-0 ring-1 ring-border shadow-2xl rounded-2xl">
+          <div className="p-4 border-b bg-muted/40 flex items-center justify-between no-print">
+            <div className="flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                <QrCode className="size-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-sm font-bold">Room QR Dining Standee Cards</DialogTitle>
+                <p className="text-[11px] text-muted-foreground">Print tent cards for hotel guest rooms</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={selectedQrRoom} onValueChange={setSelectedQrRoom}>
+                <SelectTrigger className="h-8 text-xs w-36">
+                  <SelectValue placeholder="Select Room" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Rooms (Batch)</SelectItem>
+                  {rooms.map(r => (
+                    <SelectItem key={r.number} value={r.number}>Room {r.number}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Printable Standee Area */}
+          <div id="standee-print-area" className="p-6 bg-white text-zinc-950 space-y-6">
+            {(selectedQrRoom === "all" ? rooms : rooms.filter(r => r.number === selectedQrRoom)).map((r) => {
+              const guestUrl = typeof window !== "undefined" 
+                ? `${window.location.origin}/guest/room/${r.number}` 
+                : `http://localhost:5174/guest/room/${r.number}`;
+              
+              const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(guestUrl)}`;
+
+              return (
+                <div key={r.number} className="border-2 border-zinc-800 rounded-3xl p-6 text-center space-y-4 max-w-[360px] mx-auto shadow-sm bg-gradient-to-b from-zinc-50 to-white page-break-after">
+                  {/* Hotel Header */}
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center justify-center size-10 rounded-2xl bg-zinc-900 text-white mb-1">
+                      <Hotel className="size-5 text-amber-400" />
+                    </div>
+                    <h3 className="font-serif text-lg font-bold tracking-tight text-zinc-900 uppercase">StayBite Residency</h3>
+                    <p className="text-[10px] tracking-widest uppercase font-mono text-zinc-500 font-semibold">Luxury Hospitality & Dining</p>
+                  </div>
+
+                  {/* Room Number Pill */}
+                  <div className="py-1">
+                    <span className="inline-block bg-zinc-900 text-white font-mono font-bold text-sm px-4 py-1.5 rounded-full tracking-wider shadow-xs">
+                      ROOM {r.number}
+                    </span>
+                  </div>
+
+                  {/* QR Code Container */}
+                  <div className="flex flex-col items-center justify-center p-3 bg-white border-2 border-dashed border-zinc-300 rounded-2xl shadow-xs">
+                    <img 
+                      src={qrImageUrl} 
+                      alt={`QR Code for Room ${r.number}`} 
+                      className="size-44 object-contain rounded-lg"
+                    />
+                    <span className="text-[10px] font-mono font-bold text-zinc-400 mt-1.5 uppercase">
+                      /guest/room/{r.number}
+                    </span>
+                  </div>
+
+                  {/* Instructions */}
+                  <div className="space-y-1 pt-1">
+                    <h4 className="text-xs font-bold text-zinc-900 uppercase tracking-wide">
+                      📱 24/7 In-Room Dining & Room Service
+                    </h4>
+                    <p className="text-[11px] text-zinc-600 leading-snug">
+                      1. Open your phone camera & scan QR<br />
+                      2. Browse digital menu & select dishes<br />
+                      3. Order directly to your room folio
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-zinc-200 text-[9px] text-zinc-400 font-mono">
+                    StayBite Smart Suite · No App Install Needed
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Modal Action Buttons */}
+          <div className="p-4 bg-zinc-100 border-t flex flex-wrap gap-2 justify-between items-center no-print">
+            {selectedQrRoom !== "all" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs text-primary border-primary/30"
+                onClick={() => {
+                  window.open(`/guest/room/${selectedQrRoom}`, "_blank");
+                }}
+              >
+                <ExternalLink className="size-3" /> Test Order Screen (Room {selectedQrRoom})
+              </Button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <Button variant="outline" size="sm" onClick={() => setQrModalOpen(false)}>
+                Close
+              </Button>
+              <Button size="sm" className="gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-white" onClick={() => printElement("standee-print-area", "StayBite Room QR Standees")}>
+                <Printer className="size-3.5" /> Print Standees
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <PageHeader
         title="Rooms & Bookings"
-        description={`${rooms.length} rooms across all floors`}
+        description={`${rooms.length} rooms total`}
         actions={
-          <>
-            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setRoomOpen(true)}>
+          <div className="flex flex-wrap gap-1.5">
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 border-primary/30 text-primary hover:bg-primary/10" onClick={() => { setSelectedQrRoom("all"); setQrModalOpen(true); }}>
+              <QrCode className="size-3.5" /> QR Standees
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8" onClick={() => setRoomOpen(true)}>
               <Hotel className="size-3.5" /> Add Room
             </Button>
-            <Button size="sm" className="gap-1.5" onClick={() => setBookingOpen(true)}>
-              <Plus className="size-3.5" /> New booking
+            <Button size="sm" className="gap-1.5 text-xs h-8" onClick={() => setBookingOpen(true)}>
+              <Plus className="size-3.5" /> New Booking
             </Button>
-          </>
+          </div>
         }
       />
-      <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-6">
-        <RoomStatusGrid rooms={rooms} onRoomClick={handleRoomClick} />
+
+      {/* Room Status & Housekeeping Filter Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 my-3 hide-scrollbar">
+        {[
+          { id: "all", label: `All (${rooms.length})` },
+          { id: "occupied", label: `Occupied (${rooms.filter(r => r.status === "occupied").length})` },
+          { id: "available", label: `Available (${rooms.filter(r => r.status === "available").length})` },
+          { id: "cleaning", label: `🧹 Cleaning (${rooms.filter(r => r.status === "cleaning").length})` },
+          { id: "reserved", label: `Reserved (${rooms.filter(r => r.status === "reserved").length})` },
+          { id: "maintenance", label: `Maintenance (${rooms.filter(r => r.status === "maintenance").length})` },
+        ].map((tab) => (
+          <Button
+            key={tab.id}
+            variant={statusFilter === tab.id ? "default" : "outline"}
+            size="sm"
+            className="rounded-full text-xs h-7 sm:h-8 px-3 shrink-0"
+            onClick={() => setStatusFilter(tab.id)}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
+
+      <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-3 sm:p-5">
+        <RoomStatusGrid 
+          rooms={statusFilter === "all" ? rooms : rooms.filter(r => r.status === statusFilter)} 
+          onRoomClick={handleRoomClick} 
+        />
       </div>
     </div>
   );

@@ -58,7 +58,7 @@ function AccountingPage() {
   const netProfit = totalIncome - totalExpense;
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1600px] mx-auto">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -110,86 +110,110 @@ function AccountingPage() {
         title="Accounting & Ledger" 
         description="Daily closing, expenses, revenue, and taxes." 
         actions={
-          <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
-            <Plus className="size-3.5" /> Add Transaction
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 w-full sm:w-auto justify-center"
+              onClick={() => {
+                setDescription("Inventory Purchase");
+                setType("Expense");
+                setMethod("Bank Transfer");
+                setOpen(true);
+              }}
+            >
+              <Plus className="size-3.5" /> Inventory Purchase
+            </Button>
+            <Button size="sm" className="gap-1.5 w-full sm:w-auto justify-center" onClick={() => setOpen(true)}>
+              <Plus className="size-3.5" /> Add Transaction
+            </Button>
+          </div>
         }
       />
+      <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-4 mb-6">
+        <p className="text-sm font-semibold mb-1">How expenses are tracked</p>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Income entries are auto-added from room checkout and table close actions. Expense entries (inventory purchases, rent,
+          utilities, salary payouts) should be added manually from this page using `Add Transaction` or `Inventory Purchase`.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-5 flex items-center justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
+        <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-4 sm:p-5 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Total Income</p>
-            <p className="text-2xl font-bold text-success flex items-center gap-2">
+            <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Income</p>
+            <p className="text-xl sm:text-2xl font-bold text-success flex items-center gap-2">
               ₹{totalIncome.toLocaleString()}
             </p>
           </div>
-          <div className="h-10 w-10 bg-success/10 rounded-full flex items-center justify-center text-success">
+          <div className="h-10 w-10 bg-success/10 rounded-full flex items-center justify-center text-success shrink-0">
             <ArrowUpRight className="w-5 h-5" />
           </div>
         </div>
-        <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-5 flex items-center justify-between">
+        <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-4 sm:p-5 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Total Expenses</p>
-            <p className="text-2xl font-bold text-destructive flex items-center gap-2">
+            <p className="text-xs sm:text-sm font-medium text-muted-foreground">Total Expenses</p>
+            <p className="text-xl sm:text-2xl font-bold text-destructive flex items-center gap-2">
               ₹{totalExpense.toLocaleString()}
             </p>
           </div>
-          <div className="h-10 w-10 bg-destructive/10 rounded-full flex items-center justify-center text-destructive">
+          <div className="h-10 w-10 bg-destructive/10 rounded-full flex items-center justify-center text-destructive shrink-0">
             <ArrowDownRight className="w-5 h-5" />
           </div>
         </div>
-        <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-5 flex items-center justify-between">
+        <div className="bg-card rounded-xl ring-1 ring-border shadow-soft p-4 sm:p-5 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Net Balance</p>
-            <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-primary' : 'text-destructive'} flex items-center gap-2`}>
+            <p className="text-xs sm:text-sm font-medium text-muted-foreground">Net Balance</p>
+            <p className={`text-xl sm:text-2xl font-bold ${netProfit >= 0 ? 'text-primary' : 'text-destructive'} flex items-center gap-2`}>
               ₹{netProfit.toLocaleString()}
             </p>
           </div>
-          <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+          <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center text-primary shrink-0">
             <Wallet className="w-5 h-5" />
           </div>
         </div>
       </div>
       
       <div className="bg-card rounded-xl ring-1 ring-border shadow-soft overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-muted/40 border-b border-border">
-            <tr>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Date</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Transaction ID</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Description</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Type</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Method</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase text-right">Amount</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {transactions.map((t) => (
-              <tr key={t.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-6 py-4 text-sm text-muted-foreground">{t.date}</td>
-                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{t.id}</td>
-                <td className="px-6 py-4 text-sm font-medium">{t.description}</td>
-                <td className="px-6 py-4">
-                  <Badge variant={t.type === "Income" ? "default" : t.type === "Expense" ? "destructive" : "secondary"}>
-                    {t.type}
-                  </Badge>
-                </td>
-                <td className="px-6 py-4 text-sm text-muted-foreground">{t.method}</td>
-                <td className={`px-6 py-4 text-sm font-mono font-medium text-right ${t.type === "Income" ? "text-success" : "text-destructive"}`}>
-                  {t.type === "Income" ? "+" : "-"}₹{t.amount.toLocaleString()}
-                </td>
-              </tr>
-            ))}
-            {transactions.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[650px]">
+            <thead className="bg-muted/40 border-b border-border">
               <tr>
-                <td colSpan={6} className="px-6 py-8 text-center text-sm text-muted-foreground">
-                  No transactions recorded yet.
-                </td>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Date</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Transaction ID</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Description</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Type</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Method</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase text-right whitespace-nowrap">Amount</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {transactions.map((t) => (
+                <tr key={t.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-muted-foreground whitespace-nowrap">{t.date}</td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 font-mono text-xs text-muted-foreground whitespace-nowrap">{t.id}</td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium">{t.description}</td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <Badge variant={t.type === "Income" ? "default" : t.type === "Expense" ? "destructive" : "secondary"}>
+                      {t.type}
+                    </Badge>
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-muted-foreground whitespace-nowrap">{t.method}</td>
+                  <td className={`px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-mono font-medium text-right whitespace-nowrap ${t.type === "Income" ? "text-success" : "text-destructive"}`}>
+                    {t.type === "Income" ? "+" : "-"}₹{t.amount.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+              {transactions.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    No transactions recorded yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

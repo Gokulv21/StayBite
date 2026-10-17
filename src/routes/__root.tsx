@@ -67,14 +67,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 import { useDataStore } from "@/stores/data-store";
 import { useEffect } from "react";
 
+import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
+
 function RootComponent() {
   const user = useSession((s) => s.user);
   const location = useRouterState({ select: (s) => s.location });
   const isAuthRoute = location.pathname === "/login" || location.pathname === "/register";
+  const isGuestRoute = location.pathname.startsWith("/guest");
   const settings = useDataStore((s) => s.settings);
 
   useEffect(() => {
-    const themeMode = settings?.themeMode || "dark";
+    const themeMode = settings?.themeMode || "light";
     const themePalette = settings?.themePalette || "indigo";
     const root = document.documentElement;
 
@@ -87,6 +90,16 @@ function RootComponent() {
     root.classList.add(`theme-${themePalette}`);
   }, [settings?.themeMode, settings?.themePalette]);
 
+  if (isGuestRoute) {
+    return (
+      <>
+        <Outlet />
+        <PwaInstallPrompt />
+        <Toaster position="top-right" />
+      </>
+    );
+  }
+
   if (!user && !isAuthRoute) {
     return <Navigate to="/login" replace />;
   }
@@ -98,6 +111,7 @@ function RootComponent() {
   return (
     <>
       {isAuthRoute ? <Outlet /> : <AppShell />}
+      <PwaInstallPrompt />
       <Toaster position="top-right" />
     </>
   );

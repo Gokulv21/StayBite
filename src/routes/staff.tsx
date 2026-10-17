@@ -16,12 +16,14 @@ export const Route = createFileRoute("/staff")({
 });
 
 import { useDataStore, Staff } from "@/stores/data-store";
+import { Search } from "lucide-react";
 
 function StaffPage() {
   const { staffList, setStaffList } = useDataStore();
 
   const [open, setOpen] = useState(false);
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
@@ -141,8 +143,20 @@ function StaffPage() {
     toast.success("Staff member deleted.");
   };
 
+  const filteredStaff = staffList.filter((s) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.role.toLowerCase().includes(q) ||
+      s.id.toLowerCase().includes(q) ||
+      (s.phone || "").toLowerCase().includes(q) ||
+      (s.email || "").toLowerCase().includes(q)
+    );
+  });
+
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1600px] mx-auto">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -257,77 +271,91 @@ function StaffPage() {
         title="User & Staff Management" 
         description="Configure staff roles, access permissions, and shift schedules." 
         actions={
-          <Button size="sm" className="gap-1.5" onClick={handleAddNew}>
+          <Button size="sm" className="gap-1.5 w-full sm:w-auto justify-center" onClick={handleAddNew}>
             <Plus className="size-3.5" /> Add Staff Member
           </Button>
         }
       />
+
+      {/* Search Bar */}
+      <div className="relative mb-4 max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Search by name, role, ID, phone..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-9 pr-4 h-9 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
       
       <div className="bg-card rounded-xl ring-1 ring-border shadow-soft overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-muted/40 border-b border-border">
-            <tr>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">ID</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Name & Contact</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Role</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Status</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Shift</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Salary</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Joining Date</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {staffList.map((s) => (
-              <tr key={s.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{s.id}</td>
-                <td className="px-6 py-4">
-                  <div className="font-medium text-sm text-foreground">{s.name}</div>
-                  {(s.phone || s.email) && (
-                    <div className="flex flex-col gap-0.5 mt-1 text-xs text-muted-foreground">
-                      {s.phone && <span className="flex items-center gap-1">📞 {s.phone}</span>}
-                      {s.email && <span className="flex items-center gap-1 truncate max-w-[200px]">✉️ {s.email}</span>}
-                    </div>
-                  )}
-                </td>
-                <td className="px-6 py-4 text-sm text-muted-foreground capitalize">
-                  {s.role === "housekeeping" ? "🧹 Cleaner" :
-                   s.role === "cashier" ? "💳 POS Cashier" :
-                   s.role === "kitchen" ? "🍳 Kitchen Staff" :
-                   s.role === "receptionist" ? "🛎️ Receptionist" :
-                   s.role === "owner" ? "👑 Hotel Owner" : s.role}
-                </td>
-                <td className="px-6 py-4">
-                  <Badge variant={s.status === "Active" ? "default" : "secondary"}>{s.status}</Badge>
-                </td>
-                <td className="px-6 py-4 text-sm text-muted-foreground">{s.shift}</td>
-                <td className="px-6 py-4 text-sm text-muted-foreground font-medium">
-                  {s.salary !== undefined ? `₹${s.salary.toLocaleString("en-IN")}` : "—"}
-                </td>
-                <td className="px-6 py-4 text-sm text-muted-foreground">
-                  {s.joiningDate ? new Date(s.joiningDate).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : "—"}
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-1.5">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => handleEdit(s)}>
-                      <Edit2 className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(s.id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {staffList.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[750px]">
+            <thead className="bg-muted/40 border-b border-border">
               <tr>
-                <td colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
-                  No staff members found. Click "Add Staff Member" to start.
-                </td>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">ID</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Name & Contact</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Role</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Status</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Shift</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Salary</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Joining Date</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase text-right whitespace-nowrap">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredStaff.map((s) => (
+                <tr key={s.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 font-mono text-xs text-muted-foreground whitespace-nowrap">{s.id}</td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <div className="font-medium text-sm text-foreground">{s.name}</div>
+                    {(s.phone || s.email) && (
+                      <div className="flex flex-col gap-0.5 mt-1 text-xs text-muted-foreground">
+                        {s.phone && <span className="flex items-center gap-1">📞 {s.phone}</span>}
+                        {s.email && <span className="flex items-center gap-1 truncate max-w-[200px]">✉️ {s.email}</span>}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 capitalize text-xs sm:text-sm whitespace-nowrap">
+                    {s.role === "manager" ? "👔 Manager" :
+                     s.role === "receptionist" ? "🛎️ Front Desk" :
+                     s.role === "kitchen" ? "🍳 Kitchen Chef" :
+                     s.role === "cashier" ? "💳 POS Cashier" :
+                     s.role === "housekeeping" ? "🧹 Housekeeping" : "Staff"}
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <Badge variant={s.status === "Active" ? "default" : "secondary"}>{s.status}</Badge>
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-muted-foreground whitespace-nowrap">{s.shift}</td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-semibold font-mono text-foreground whitespace-nowrap">
+                    {s.salary ? `₹${s.salary.toLocaleString("en-IN")}` : "—"}
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-muted-foreground font-mono whitespace-nowrap">
+                    {s.joiningDate ? new Date(s.joiningDate).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' }) : "—"}
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-right whitespace-nowrap">
+                    <div className="flex justify-end gap-1.5">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => handleEdit(s)}>
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(s.id)}>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredStaff.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    No staff members found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

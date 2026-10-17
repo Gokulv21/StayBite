@@ -40,7 +40,7 @@ export function AppSidebar() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <nav className="floating-dock">
+    <nav className="hidden md:flex floating-dock">
       {NAV_ITEMS.map((item) => {
         if (user && !hasPermission(user.role, item.perm)) return null;
         const Icon = item.icon;

@@ -1,12 +1,21 @@
 {
-  "name": "Arbor ERP",
-  "short_name": "Arbor",
-  "description": "Hotel + Restaurant POS / ERP",
+  "name": "StayBite — Hotel & Restaurant PMS Suite",
+  "short_name": "StayBite",
+  "description": "Smart Property Management System, Restaurant POS, KDS & Contactless In-Room Dining",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
+  "orientation": "any",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "categories": ["business", "food", "travel", "productivity"],
   "icons": [
+    {
+      "src": "/icons/staybite-light-48.png",
+      "sizes": "48x48",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icons/staybite-light-192.png",
       "sizes": "192x192",
@@ -30,6 +39,29 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Rooms & Check-In",
+      "short_name": "Rooms",
+      "description": "View live room grid and manage guest check-ins",
+      "url": "/rooms",
+      "icons": [{ "src": "/icons/staybite-light-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Restaurant POS",
+      "short_name": "POS",
+      "description": "Quick table billing and order management",
+      "url": "/pos",
+      "icons": [{ "src": "/icons/staybite-light-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Kitchen Display",
+      "short_name": "KDS",
+      "description": "Live chef order queue with sound alerts",
+      "url": "/kds",
+      "icons": [{ "src": "/icons/staybite-light-192.png", "sizes": "192x192" }]
     }
   ]
 }

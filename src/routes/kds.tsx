@@ -10,6 +10,29 @@ import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { useDataStore, Ticket } from "@/stores/data-store";
 
+function playKitchenChime() {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 note
+    osc.frequency.exponentialRampToValueAtTime(1320, audioCtx.currentTime + 0.15); // E6 note
+    
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.6);
+  } catch (e) {
+    // AudioContext blocked before interaction
+  }
+}
+
 export const Route = createFileRoute("/kds")({
   head: () => ({
     meta: [
@@ -62,6 +85,7 @@ function KdsPage() {
       createdAt: new Date().toISOString(),
     };
     setKdsTickets([...kdsTickets, newTicket]);
+    playKitchenChime();
     setOpen(false);
     setTable("");
     setItemsText("");
@@ -77,12 +101,12 @@ function KdsPage() {
     // Calculate total cost of ticket items
     let ticketCost = 0;
     ticket.items.forEach(itemString => {
-      // itemString format: "2x Margherita Pizza"
-      const match = itemString.match(/^(\d+)x\s+(.*)$/);
+      // itemString format: "2x Margherita Pizza" or "2× Margherita Pizza"
+      const match = itemString.match(/^(\d+)[x×]\s+(.*)$/i);
       if (match) {
         const qty = parseInt(match[1]);
-        const name = match[2];
-        const menuItem = menuItems.find(m => m.name === name);
+        const name = match[2].trim();
+        const menuItem = menuItems.find(m => m.name.toLowerCase() === name.toLowerCase());
         if (menuItem) {
           ticketCost += (menuItem.price * qty);
         }
@@ -90,32 +114,37 @@ function KdsPage() {
     });
 
     if (ticket.table.startsWith("Rm ")) {
-      const roomNumber = ticket.table.replace("Rm ", "");
-      const updatedRooms = rooms.map(r => {
-        if (r.number === roomNumber) {
-          // If the order came from QR, it might not have a corresponding 'RoomOrder' yet.
-          // We can just add it as a completed order to the room folio.
-          const newOrder = {
-            id: `ORD-${Date.now()}`,
-            description: `QR Order: ${ticket.items.join(", ")}`,
-            amount: ticketCost,
-            time: new Date().toISOString(),
-            status: "completed" as const
-          };
-          return {
-            ...r,
-            orders: [...(r.orders || []), newOrder]
-          };
-        }
-        return r;
-      });
-      setRooms(updatedRooms);
+      const roomNumber = ticket.table.replace("Rm ", "").trim();
+      const currentRoom = rooms.find(r => r.number === roomNumber);
+      
+      const alreadyCharged = currentRoom?.orders?.some(o => o.description.includes(ticket.id));
+
+      if (!alreadyCharged) {
+        // If not already charged (e.g. manual KDS ticket), add as completed order to room folio
+        const newOrder = {
+          id: `ORD-${Date.now()}`,
+          description: `Kitchen Order (${ticket.id}): ${ticket.items.join(", ")}`,
+          amount: ticketCost,
+          time: new Date().toISOString(),
+          status: "completed" as const
+        };
+        setRooms(rooms.map(r => r.number === roomNumber ? {
+          ...r,
+          orders: [...(r.orders || []), newOrder]
+        } : r));
+      } else {
+        // Ensure any matching order is marked completed
+        setRooms(rooms.map(r => r.number === roomNumber ? {
+          ...r,
+          orders: (r.orders || []).map(o => o.description.includes(ticket.id) ? { ...o, status: "completed" as const } : o)
+        } : r));
+      }
     } else if (ticket.table.startsWith("T-")) {
       // Charge Table
       chargeTable(ticket.table, ticketCost);
     }
     
-    toast.success(`Ticket ${id} marked as completed and billed to ${ticket.table}!`);
+    toast.success(`Ticket ${id} marked as completed!`);
   };
 
   const deleteTicket = (id: string) => {
@@ -128,7 +157,7 @@ function KdsPage() {
   );
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1600px] mx-auto">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -193,43 +222,62 @@ function KdsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          {displayedTickets.map((t) => (
-            <div
-              key={t.id}
-              className={`rounded-xl ring-1 shadow-soft overflow-hidden flex flex-col ${
-                t.status === "completed" 
-                  ? "bg-muted/30 ring-border opacity-70 grayscale-[30%]"
-                  : t.urgent 
-                    ? "bg-warning/10 ring-warning/30" 
-                    : "bg-card ring-border"
-              }`}
-            >
-              <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
-                <span className="font-mono text-xs font-semibold">{t.id}</span>
-                <span className="text-[10px] font-medium text-muted-foreground">
-                  {t.status === "completed" ? "Done" : `${getElapsedMinutes(t)}m`} · {t.table}
-                </span>
-              </div>
-              <div className="p-4 space-y-1.5 flex-1">
-                {t.items.map((i, idx) => (
-                  <p key={idx} className={`text-sm font-medium ${t.status === "completed" ? "line-through text-muted-foreground" : ""}`}>{i}</p>
-                ))}
-              </div>
-              {t.status === "pending" ? (
-                <div className="p-3 bg-muted/30 border-t border-border flex justify-end">
-                  <Button size="sm" variant="secondary" className="gap-1.5 w-full bg-background" onClick={() => markDone(t.id)}>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-success" /> Mark Done
-                  </Button>
+          {displayedTickets.map((t) => {
+            const elapsed = getElapsedMinutes(t);
+            const isUrgent = elapsed >= 20 || t.urgent;
+            const isAttention = elapsed >= 10 && elapsed < 20;
+
+            return (
+              <div
+                key={t.id}
+                className={`rounded-xl ring-1 shadow-soft overflow-hidden flex flex-col transition-all ${
+                  t.status === "completed" 
+                    ? "bg-muted/30 ring-border opacity-70 grayscale-[30%]"
+                    : isUrgent 
+                      ? "bg-rose-500/10 ring-rose-500/50 shadow-md border-t-2 border-t-rose-500" 
+                      : isAttention
+                        ? "bg-amber-500/10 ring-amber-500/40 border-t-2 border-t-amber-500"
+                        : "bg-card ring-border border-t-2 border-t-emerald-500"
+                }`}
+              >
+                <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold">{t.id}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                      t.status === "completed" 
+                        ? "bg-muted text-muted-foreground" 
+                        : isUrgent 
+                          ? "bg-rose-500 text-white animate-pulse" 
+                          : isAttention 
+                            ? "bg-amber-500/20 text-amber-600 dark:text-amber-300" 
+                            : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-300"
+                    }`}>
+                      {t.status === "completed" ? "Done" : `${elapsed}m`}
+                    </span>
+                    <span className="text-[11px] font-bold text-foreground">· {t.table}</span>
+                  </div>
                 </div>
-              ) : (
-                <div className="p-3 bg-muted/30 border-t border-border flex justify-end">
-                  <Button size="sm" variant="destructive" className="gap-1.5 w-full bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteTicket(t.id)}>
-                    <Trash2 className="w-3.5 h-3.5" /> Delete Permanently
-                  </Button>
+                <div className="p-4 space-y-1.5 flex-1">
+                  {t.items.map((i, idx) => (
+                    <p key={idx} className={`text-sm font-medium ${t.status === "completed" ? "line-through text-muted-foreground" : ""}`}>{i}</p>
+                  ))}
                 </div>
-              )}
-            </div>
-          ))}
+                {t.status === "pending" ? (
+                  <div className="p-3 bg-muted/30 border-t border-border flex justify-end">
+                    <Button size="sm" variant="secondary" className="gap-1.5 w-full bg-background" onClick={() => markDone(t.id)}>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-success" /> Mark Done
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-muted/30 border-t border-border flex justify-end">
+                    <Button size="sm" variant="destructive" className="gap-1.5 w-full bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => deleteTicket(t.id)}>
+                      <Trash2 className="w-3.5 h-3.5" /> Delete Permanently
+                    </Button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

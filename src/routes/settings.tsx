@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   Sun, Moon, Download, RotateCcw, Building, Sliders,
@@ -24,7 +25,7 @@ type TabId = "general" | "environment" | "operations" | "appearance" | "backup";
 
 function SettingsPage() {
   const { user, branches, activeBranchId, addBranch } = useSession();
-  const { settings, updateSettings, tables, setTables, rooms, clearTable, transactions, setTransactions } = useDataStore();
+  const { settings, updateSettings, tables, setTables, rooms, clearTable, transferTableToRoom, transactions, setTransactions } = useDataStore();
   const branch = branches.find((b) => b.id === activeBranchId);
   
   const [activeTab, setActiveTab] = useState<TabId>("general");
@@ -35,6 +36,7 @@ function SettingsPage() {
   // Environment Setup States
   const [tableCountInput, setTableCountInput] = useState(tables.length.toString());
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
+  const [transferTargetRoom, setTransferTargetRoom] = useState<string>("");
 
   const canManageBranches = user && hasPermission(user.role, "branches.manage");
 
@@ -291,20 +293,66 @@ function SettingsPage() {
             
             {/* Table Management Dialog */}
             <Dialog open={!!selectedTable} onOpenChange={(open) => !open && setSelectedTable(null)}>
-              <DialogContent className="sm:max-w-[400px]">
+              <DialogContent className="sm:max-w-[440px]">
                 <DialogHeader>
                   <DialogTitle>{selectedTable} Management</DialogTitle>
                 </DialogHeader>
-                <div className="py-6 flex flex-col items-center justify-center bg-zinc-50 dark:bg-zinc-900 rounded-xl border border-border">
-                  <span className="text-sm text-muted-foreground mb-1">Current Bill Outstanding</span>
+                <div className="py-5 flex flex-col items-center justify-center bg-zinc-50 dark:bg-zinc-900 rounded-xl border border-border">
+                  <span className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wider">Current Bill Outstanding</span>
                   <span className="text-4xl font-bold font-mono text-primary">
                     ₹{tables.find(t => t.id === selectedTable)?.billAmount.toFixed(2) || "0.00"}
                   </span>
                 </div>
-                <DialogFooter className="flex gap-2">
+
+                {/* Transfer to Room Option */}
+                {tables.find(t => t.id === selectedTable)?.billAmount ? (
+                  <div className="space-y-2 p-3 bg-muted/30 rounded-xl border">
+                    <Label className="text-xs font-semibold flex items-center gap-1.5">
+                      <Hotel className="w-3.5 h-3.5 text-primary" /> Transfer Bill to Occupied Room Folio
+                    </Label>
+                    <div className="flex gap-2">
+                      <Select value={transferTargetRoom} onValueChange={setTransferTargetRoom}>
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="Select occupied room" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {rooms.filter(r => r.status === "occupied").map(r => (
+                            <SelectItem key={r.number} value={r.number}>
+                              Room {r.number} ({r.guestName || "Guest"})
+                            </SelectItem>
+                          ))}
+                          {rooms.filter(r => r.status === "occupied").length === 0 && (
+                            <SelectItem value="none" disabled>No occupied rooms</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        size="sm" 
+                        variant="secondary" 
+                        className="h-8 text-xs shrink-0"
+                        disabled={!transferTargetRoom || transferTargetRoom === "none"}
+                        onClick={() => {
+                          if (!selectedTable || !transferTargetRoom) return;
+                          const ok = transferTableToRoom(selectedTable, transferTargetRoom);
+                          if (ok) {
+                            toast.success(`Bill from ${selectedTable} transferred to Room ${transferTargetRoom}!`);
+                            setSelectedTable(null);
+                            setTransferTargetRoom("");
+                          } else {
+                            toast.error("Could not transfer bill.");
+                          }
+                        }}
+                      >
+                        Transfer
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <DialogFooter className="flex gap-2 pt-2">
                   <Button variant="outline" onClick={() => setSelectedTable(null)}>Cancel</Button>
                   <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleTablePaid}>
-                    Mark as Paid & Clear Table
+                    Mark Paid & Clear Table
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -430,24 +478,24 @@ function SettingsPage() {
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1400px] mx-auto h-[calc(100vh-64px)] flex flex-col">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1400px] mx-auto flex flex-col">
       <PageHeader 
         title="Settings Console" 
         description="Configure your residency branding, environment mappings, and system preferences." 
       />
 
-      <div className="flex flex-1 gap-8 mt-6 overflow-hidden">
-        {/* Sidebar Nav */}
-        <div className="w-64 shrink-0 flex flex-col gap-1 pr-6 border-r border-border/40">
-          <SidebarBtn active={activeTab === "general"} onClick={() => setActiveTab("general")} icon={<Building className="w-4 h-4" />} label="Property Profile" />
-          <SidebarBtn active={activeTab === "environment"} onClick={() => setActiveTab("environment")} icon={<LayoutGrid className="w-4 h-4" />} label="Hotel Environment" />
-          <SidebarBtn active={activeTab === "operations"} onClick={() => setActiveTab("operations")} icon={<Sliders className="w-4 h-4" />} label="Operations & Stock" />
-          <SidebarBtn active={activeTab === "appearance"} onClick={() => setActiveTab("appearance")} icon={<Palette className="w-4 h-4" />} label="Appearance" />
-          <SidebarBtn active={activeTab === "backup"} onClick={() => setActiveTab("backup")} icon={<RotateCcw className="w-4 h-4" />} label="Data & Backup" />
+      <div className="flex flex-col md:flex-row flex-1 gap-4 md:gap-8 mt-3 md:mt-6">
+        {/* Sidebar Nav: horizontal scrollable pills on mobile, vertical list on desktop */}
+        <div className="flex flex-row md:flex-col gap-1.5 overflow-x-auto pb-2 md:pb-0 md:w-56 shrink-0 md:pr-6 md:border-r border-border/40">
+          <SidebarBtn active={activeTab === "general"} onClick={() => setActiveTab("general")} icon={<Building className="w-4 h-4 shrink-0" />} label="Property Profile" />
+          <SidebarBtn active={activeTab === "environment"} onClick={() => setActiveTab("environment")} icon={<LayoutGrid className="w-4 h-4 shrink-0" />} label="Hotel Environment" />
+          <SidebarBtn active={activeTab === "operations"} onClick={() => setActiveTab("operations")} icon={<Sliders className="w-4 h-4 shrink-0" />} label="Operations & Stock" />
+          <SidebarBtn active={activeTab === "appearance"} onClick={() => setActiveTab("appearance")} icon={<Palette className="w-4 h-4 shrink-0" />} label="Appearance" />
+          <SidebarBtn active={activeTab === "backup"} onClick={() => setActiveTab("backup")} icon={<RotateCcw className="w-4 h-4 shrink-0" />} label="Data & Backup" />
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto pb-20 pr-4">
+        <div className="flex-1 overflow-y-auto pb-20">
           {renderContent()}
         </div>
       </div>
@@ -459,12 +507,12 @@ function SidebarBtn({ active, icon, label, onClick }: { active: boolean, icon: a
   return (
     <button 
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${
-        active ? "bg-primary text-primary-foreground shadow-md" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+      className={`shrink-0 whitespace-nowrap flex items-center gap-2 sm:gap-3 px-3 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all text-left cursor-pointer ${
+        active ? "bg-primary text-primary-foreground shadow-md font-semibold" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground bg-card/60 md:bg-transparent border border-border/40 md:border-transparent"
       }`}
     >
       {icon}
-      {label}
+      <span>{label}</span>
     </button>
   );
 }

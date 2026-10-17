@@ -1,25 +1,32 @@
 version: '3.8'
 
 services:
+  # ==========================================
+  # 1. PostgreSQL Database (200 GB Storage)
+  # ==========================================
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: staybite-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: staybite_db
+      POSTGRES_USER: ${POSTGRES_USER:-staybite_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-StayBiteSecure2026!}
+      POSTGRES_DB: ${POSTGRES_DB:-staybite_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-    restart: unless-stopped
+    restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-staybite_admin} -d ${POSTGRES_DB:-staybite_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ==========================================
+  # 2. Redis In-Memory Cache & WebSockets
+  # ==========================================
   redis:
     image: redis:7-alpine
     container_name: staybite-redis
@@ -27,22 +34,53 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    restart: unless-stopped
-    command: redis-server --appendonly yes
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-StayBiteRedis2026!}
 
-  # Backend and NGINX are placeholders for when the Spring Boot app is containerized
-  # backend:
-  #   build: ./backend
-  #   container_name: staybite-backend
-  #   ports:
-  #     - "8080:8080"
-  #   environment:
-  #     - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/staybite_db
-  #     - SPRING_REDIS_HOST=redis
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
+  # ==========================================
+  # 3. StayBite Spring Boot ERP Backend
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: staybite-backend
+    restart: always
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-staybite_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-staybite_admin}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-StayBiteSecure2026!}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:-StayBiteRedis2026!}
+      JWT_SECRET: ${JWT_SECRET:-9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8080:8080"
+
+  # ==========================================
+  # 4. Nginx Reverse Proxy & Frontend Host
+  # ==========================================
+  nginx:
+    image: nginx:alpine
+    container_name: staybite-web
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
+    driver: local
   redis_data:
+    driver: local

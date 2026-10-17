@@ -30,6 +30,10 @@ function PosPage() {
   const [customOpen, setCustomOpen] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customPrice, setCustomPrice] = useState("");
+  const [customGst, setCustomGst] = useState("5");
+  const [customType, setCustomType] = useState<"Veg" | "Non-Veg">("Veg");
+  const [customCategories, setCustomCategories] = useState<string[]>(["Mains"]);
+  const [saveCustomToMenu, setSaveCustomToMenu] = useState(true);
   const [selectedSavedDish, setSelectedSavedDish] = useState("");
 
   // Manage Dish Modal State
@@ -47,7 +51,7 @@ function PosPage() {
   const [activeCategory, setActiveCategory] = useState("All");
 
   const [targetType, setTargetType] = useState<"Table" | "Room">("Table");
-  const [targetId, setTargetId] = useState("T-12");
+  const [targetId, setTargetId] = useState("T-01");
 
   const addToCart = (item: { id: string; name: string; price: number }) => {
     setCart((prev) => {
@@ -80,16 +84,38 @@ function PosPage() {
       toast.error("Valid name and price required.");
       return;
     }
+    const existingDish = menuItems.find(
+      (item) => item.name.toLowerCase() === customName.trim().toLowerCase() && Number(item.price) === Number(customPrice),
+    );
+    const customId = existingDish?.id ?? `custom_${Date.now()}`;
     addToCart({
-      id: `custom_${Date.now()}`,
+      id: customId,
       name: customName,
       price: Number(customPrice),
     });
+    if (saveCustomToMenu && !existingDish) {
+      setMenuItems([
+        ...menuItems,
+        {
+          id: customId,
+          name: customName.trim(),
+          price: Number(customPrice),
+          gst: Number(customGst) || 0,
+          categories: customCategories.length > 0 ? customCategories : ["Mains"],
+          type: customType,
+          isAvailable: true,
+        },
+      ]);
+    }
     setCustomOpen(false);
     setCustomName("");
     setCustomPrice("");
+    setCustomGst("5");
+    setCustomType("Veg");
+    setCustomCategories(["Mains"]);
+    setSaveCustomToMenu(true);
     setSelectedSavedDish("");
-    toast.success("Item added to cart!");
+    toast.success(saveCustomToMenu ? "Item added and saved for future use." : "Item added to cart!");
   };
 
   const handleSavedDishSelect = (val: string) => {
@@ -98,7 +124,14 @@ function PosPage() {
     if (dish) {
       setCustomName(dish.name);
       setCustomPrice(dish.price.toString());
+      setCustomGst(String(dish.gst ?? 0));
+      setCustomCategories(dish.categories && dish.categories.length > 0 ? dish.categories : ["Mains"]);
+      setCustomType(dish.type || "Veg");
     }
+  };
+
+  const toggleCustomCategory = (cat: string) => {
+    setCustomCategories((prev) => (prev.includes(cat) ? prev.filter((item) => item !== cat) : [...prev, cat]));
   };
 
   const openAddDish = () => {
@@ -202,12 +235,13 @@ function PosPage() {
 
     // If assigned to a Room, charge the room folio
     if (targetType === "Room") {
+      const itemsSummary = itemsList.join(", ");
       chargeRoom(targetId, {
         id: `POS-${Date.now()}`,
-        description: `Restaurant/Bar Order (${ticketId})`,
+        description: `Restaurant Order (${ticketId}): ${itemsSummary}`,
         amount: grandTotal,
         time: new Date().toISOString(),
-        status: "pending",
+        status: "completed",
       });
       toast.success(`Order sent to Kitchen and ₹${grandTotal.toFixed(2)} charged to Room ${targetId}!`);
     } else {
@@ -230,7 +264,7 @@ function PosPage() {
     : menuItems.filter(m => m.categories?.includes(activeCategory));
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto h-[calc(100vh-3.5rem)] flex flex-col">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1600px] mx-auto min-h-full flex flex-col">
       
       {/* Custom Item Modal */}
       <Dialog open={customOpen} onOpenChange={setCustomOpen}>
@@ -257,18 +291,55 @@ function PosPage() {
               </Select>
             </div>
 
-            <div className="space-y-4">
-              <Label className="text-muted-foreground text-xs uppercase tracking-wider font-semibold">Manual Details</Label>
-              <div className="space-y-2">
-                <Label>Item Name</Label>
-                <Input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="e.g. Special Request Diet" />
-              </div>
-              <div className="space-y-2">
-                <Label>Price (₹)</Label>
-                <Input value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} placeholder="0.00" type="number" />
+              <div className="space-y-4">
+                <Label className="text-muted-foreground text-xs uppercase tracking-wider font-semibold">Manual Details</Label>
+                <div className="space-y-2">
+                  <Label>Item Name</Label>
+                  <Input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="e.g. Special Request Diet" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Price (₹)</Label>
+                    <Input value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} placeholder="0.00" type="number" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>GST %</Label>
+                    <Input value={customGst} onChange={(e) => setCustomGst(e.target.value)} placeholder="5" type="number" step="0.01" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Categories</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {EDIT_CATEGORIES.map((cat) => (
+                      <Button
+                        key={cat}
+                        type="button"
+                        size="sm"
+                        variant={customCategories.includes(cat) ? "default" : "outline"}
+                        className="h-7 text-xs rounded-full"
+                        onClick={() => toggleCustomCategory(cat)}
+                      >
+                        {cat}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select value={customType} onValueChange={(value: "Veg" | "Non-Veg") => setCustomType(value)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Veg">Veg</SelectItem>
+                      <SelectItem value="Non-Veg">Non-Veg</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input type="checkbox" checked={saveCustomToMenu} onChange={(e) => setSaveCustomToMenu(e.target.checked)} />
+                  Save this custom item to POS menu for future use
+                </label>
               </div>
             </div>
-          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCustomOpen(false)}>Cancel</Button>
             <Button onClick={handleAddCustom}>Add to Cart</Button>
@@ -345,16 +416,16 @@ function PosPage() {
             <Button size="sm" variant="outline" className="gap-1.5" onClick={openAddDish}>
               <ChefHat className="size-3.5" /> Add Dish
             </Button>
-            <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => { setCustomOpen(true); setCustomName(""); setCustomPrice(""); setSelectedSavedDish(""); }}>
+            <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => { setCustomOpen(true); setCustomName(""); setCustomPrice(""); setCustomGst("5"); setCustomType("Veg"); setCustomCategories(["Mains"]); setSaveCustomToMenu(true); setSelectedSavedDish(""); }}>
               <Plus className="size-3.5" /> Custom Item
             </Button>
           </div>
         }
       />
       
-      <div className="flex-1 min-h-0 flex gap-6 overflow-hidden mt-2">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6 mt-2">
         {/* Left Pane - Menu Grid */}
-        <div className="flex-1 flex flex-col min-h-0 pr-2 pb-6">
+        <div className="flex-1 flex flex-col min-h-0 pb-4">
           
           {/* Category Filters */}
           <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-3 hide-scrollbar border-b border-border">
@@ -363,7 +434,7 @@ function PosPage() {
                 key={category}
                 variant={activeCategory === category ? "secondary" : "ghost"}
                 size="sm"
-                className={`rounded-full px-4 h-8 text-xs whitespace-nowrap transition-all ${
+                className={`rounded-full px-4 h-8 text-xs whitespace-nowrap transition-all shrink-0 ${
                   activeCategory === category ? "shadow-sm border border-border/50" : "text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={() => setActiveCategory(category)}
@@ -373,28 +444,28 @@ function PosPage() {
             ))}
           </div>
 
-          {/* Grid */}
-          <div className="flex-1 overflow-y-auto pr-2">
+          {/* Menu Items Grid */}
+          <div className="flex-1 overflow-y-auto pr-1">
             {filteredItems.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground border border-dashed rounded-xl bg-card/50">
-                <ChefHat className="w-12 h-12 mb-3 opacity-20" />
-                <p>No dishes found in "{activeCategory}". Click "Add Dish" to expand your menu.</p>
+              <div className="h-48 flex flex-col items-center justify-center text-muted-foreground">
+                <Tag className="w-8 h-8 mb-2 opacity-50" />
+                <p>No dishes found in this category.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
-                {filteredItems.map((item) => (
-                  <div 
-                    key={item.id} 
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                {filteredItems.map(item => (
+                  <div
+                    key={item.id}
                     onClick={() => addToCart(item)}
-                    className="group bg-card hover:bg-muted/50 cursor-pointer rounded-xl ring-1 ring-border shadow-sm p-3 flex flex-col justify-between h-[100px] transition-all active:scale-95 relative overflow-hidden"
+                    className="p-3.5 rounded-xl border bg-card hover:border-primary/50 transition-all cursor-pointer flex flex-col justify-between h-28 relative group shadow-sm hover:shadow"
                   >
-                    <div className={`absolute top-0 left-0 w-1 h-full ${item.type === 'Non-Veg' ? 'bg-destructive' : 'bg-success'}`} />
-                    
-                    <div className="flex justify-between items-start pl-2">
-                      <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground bg-background px-1.5 py-0.5 rounded border max-w-[65%] truncate" title={item.categories?.join(', ')}>
-                        <Tag className="w-3 h-3 shrink-0" /> <span className="truncate">{item.categories?.join(', ')}</span>
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${item.type === 'Non-Veg' ? 'bg-red-500 ring-2 ring-red-500/20' : 'bg-emerald-500 ring-2 ring-emerald-500/20'}`} />
+                        <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">{item.categories?.[0] || 'Dish'}</span>
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={(e) => openEditDish(e, item)}
                           className="p-1 text-muted-foreground hover:text-primary transition-colors bg-background rounded shadow-sm border"
@@ -410,7 +481,7 @@ function PosPage() {
                       </div>
                     </div>
                     
-                    <div className="pl-2 flex justify-between items-end gap-2">
+                    <div className="flex justify-between items-end gap-2">
                       <div className="font-semibold text-sm leading-tight flex-1 truncate" title={item.name}>{item.name}</div>
                       <div className="text-primary font-mono text-sm font-bold">₹{item.price}</div>
                     </div>
@@ -422,7 +493,7 @@ function PosPage() {
         </div>
 
         {/* Right Pane - Cart */}
-        <div className="w-[420px] flex flex-col bg-card rounded-xl ring-1 ring-border shadow-soft overflow-hidden">
+        <div className="w-full lg:w-[400px] flex flex-col bg-card rounded-xl ring-1 ring-border shadow-soft overflow-hidden shrink-0 mt-4 lg:mt-0">
           <div className="px-5 py-4 border-b border-border bg-muted/30 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 font-semibold min-w-fit">
               <ShoppingCart className="w-4 h-4" /> Current Order

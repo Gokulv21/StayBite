@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useDataStore } from "@/stores/data-store";
 
 export const Route = createFileRoute("/inventory")({
   head: () => ({ meta: [{ title: "Inventory — StayBite" }] }),
@@ -23,8 +24,6 @@ interface InventoryItem {
   unit: string;
   status: "In Stock" | "Low Stock" | "Out of Stock";
 }
-
-import { useDataStore } from "@/stores/data-store";
 
 function InventoryPage() {
   const { inventory, setInventory, settings } = useDataStore();
@@ -46,12 +45,7 @@ function InventoryPage() {
         let status: "In Stock" | "Low Stock" | "Out of Stock" = "In Stock";
         if (newQty === 0) status = "Out of Stock";
         else if (newQty <= threshold) status = "Low Stock";
-        
-        return {
-          ...item,
-          quantity: Number(newQty.toFixed(2)),
-          status
-        };
+        return { ...item, quantity: Number(newQty.toFixed(2)), status };
       }
       return item;
     });
@@ -70,7 +64,7 @@ function InventoryPage() {
     else if (qtyNum <= 5) status = "Low Stock";
 
     const newItem: InventoryItem = {
-      id: `INV-00${inventory.length + 1}`,
+      id: `INV-${Date.now().toString(36).toUpperCase()}`,
       name,
       category,
       quantity: qtyNum,
@@ -92,7 +86,7 @@ function InventoryPage() {
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1600px] mx-auto">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -134,32 +128,68 @@ function InventoryPage() {
         </DialogContent>
       </Dialog>
 
-      <PageHeader 
-        title="Inventory" 
-        description="Raw materials, stock levels, and supply availability." 
+      <PageHeader
+        title="Inventory"
+        description="Stock levels, raw materials & supply availability."
         actions={
-          <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
+          <Button size="sm" className="gap-1.5 text-xs h-8" onClick={() => setOpen(true)}>
             <Plus className="size-3.5" /> Add Item
           </Button>
         }
       />
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-card rounded-xl ring-1 ring-border p-4">
-          <p className="text-xs text-muted-foreground">Available Items</p>
-          <p className="text-2xl font-semibold text-emerald-600">{inStockCount}</p>
+
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4 sm:mb-6">
+        <div className="bg-card rounded-xl ring-1 ring-border p-3 sm:p-4">
+          <p className="text-xs text-muted-foreground">In Stock</p>
+          <p className="text-xl sm:text-2xl font-bold text-emerald-600">{inStockCount}</p>
         </div>
-        <div className="bg-card rounded-xl ring-1 ring-border p-4">
-          <p className="text-xs text-muted-foreground">Low Stock Alerts</p>
-          <p className="text-2xl font-semibold text-amber-600">{lowStockCount}</p>
+        <div className="bg-card rounded-xl ring-1 ring-border p-3 sm:p-4">
+          <p className="text-xs text-muted-foreground">Low Stock</p>
+          <p className="text-xl sm:text-2xl font-bold text-amber-600">{lowStockCount}</p>
         </div>
-        <div className="bg-card rounded-xl ring-1 ring-border p-4">
+        <div className="bg-card rounded-xl ring-1 ring-border p-3 sm:p-4">
           <p className="text-xs text-muted-foreground">Out of Stock</p>
-          <p className="text-2xl font-semibold text-rose-600">{outOfStockCount}</p>
+          <p className="text-xl sm:text-2xl font-bold text-rose-600">{outOfStockCount}</p>
         </div>
       </div>
-      
+
       <div className="bg-card rounded-xl ring-1 ring-border shadow-soft overflow-hidden">
-        <table className="w-full text-left">
+        {/* Mobile card list */}
+        <div className="sm:hidden divide-y divide-border">
+          {inventory.map((item) => (
+            <div key={item.id} className="px-4 py-3 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold leading-tight">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">{item.category} · <span className="font-mono">{item.id}</span></p>
+                </div>
+                <Badge variant={item.status === "In Stock" ? "default" : item.status === "Low Stock" ? "secondary" : "destructive"} className="shrink-0 text-[10px]">
+                  {item.status}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleAdjustQty(item.id, -1)}>
+                    <Minus className="w-3.5 h-3.5" />
+                  </Button>
+                  <span className="text-sm font-mono font-bold w-10 text-center">{item.quantity}</span>
+                  <span className="text-xs text-muted-foreground">{item.unit}</span>
+                  <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => handleAdjustQty(item.id, 1)}>
+                    <Plus className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(item.id)}>
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+          {inventory.length === 0 && (
+            <div className="px-4 py-8 text-center text-sm text-muted-foreground">No inventory items. Tap "Add Item" to start.</div>
+          )}
+        </div>
+        {/* Desktop table */}
+        <table className="hidden sm:table w-full text-left">
           <thead className="bg-muted/40 border-b border-border">
             <tr>
               <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">ID</th>
@@ -178,22 +208,12 @@ function InventoryPage() {
                 <td className="px-6 py-4 text-sm text-muted-foreground">{item.category}</td>
                 <td className="px-6 py-4 text-sm font-mono text-right font-medium">
                   <div className="flex items-center justify-end gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      className="h-7 w-7 rounded-full transition-transform active:scale-95 border-border hover:bg-muted"
-                      onClick={() => handleAdjustQty(item.id, -1)}
-                    >
+                    <Button variant="outline" size="icon" className="h-7 w-7 rounded-full transition-transform active:scale-95 border-border hover:bg-muted" onClick={() => handleAdjustQty(item.id, -1)}>
                       <Minus className="w-3.5 h-3.5" />
                     </Button>
                     <span className="w-12 text-center">{item.quantity}</span>
                     <span className="text-muted-foreground text-xs font-sans w-8 text-left">{item.unit}</span>
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      className="h-7 w-7 rounded-full transition-transform active:scale-95 border-border hover:bg-muted"
-                      onClick={() => handleAdjustQty(item.id, 1)}
-                    >
+                    <Button variant="outline" size="icon" className="h-7 w-7 rounded-full transition-transform active:scale-95 border-border hover:bg-muted" onClick={() => handleAdjustQty(item.id, 1)}>
                       <Plus className="w-3.5 h-3.5" />
                     </Button>
                   </div>

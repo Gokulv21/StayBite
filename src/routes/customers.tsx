@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { printElement } from "@/lib/print";
 
 export const Route = createFileRoute("/customers")({
   head: () => ({ meta: [{ title: "Customers — StayBite" }] }),
@@ -25,12 +26,14 @@ interface Customer {
 }
 
 import { useDataStore } from "@/stores/data-store";
+import { Search } from "lucide-react";
 
 function CustomersPage() {
   const { customers, setCustomers, invoices } = useDataStore();
 
   const [messagingOpen, setMessagingOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [search, setSearch] = useState("");
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
@@ -51,8 +54,19 @@ function CustomersPage() {
     toast.success("Customer deleted.");
   };
 
+  const filteredCustomers = customers.filter((c) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.phone.includes(q) ||
+      c.email?.toLowerCase().includes(q) ||
+      c.id.toLowerCase().includes(q)
+    );
+  });
+
   return (
-    <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
+    <div className="p-2 sm:p-4 lg:p-6 max-w-[1600px] mx-auto">
       <MessagingModal open={messagingOpen} onOpenChange={setMessagingOpen} customer={selectedCustomer} />
 
       <PageHeader
@@ -60,57 +74,71 @@ function CustomersPage() {
         description="Guest profiles, loyalty points and history."
       />
 
+      {/* Search Bar */}
+      <div className="relative mb-4 max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Search by name, phone, email or ID..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-9 pr-4 h-9 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
+
       <div className="bg-card rounded-xl ring-1 ring-border shadow-soft overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-muted/40 border-b border-border">
-            <tr>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">ID</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Name</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Contact</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase">Tier</th>
-              <th className="px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {customers.map((c) => (
-              <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{c.id}</td>
-                <td className="px-6 py-4 text-sm font-medium">
-                  <button
-                    onClick={() => handleCustomerClick(c)}
-                    className="hover:underline text-primary hover:text-primary/80 transition-colors text-left font-semibold cursor-pointer"
-                  >
-                    {c.name}
-                  </button>
-                </td>
-                <td className="px-6 py-4 text-sm text-muted-foreground">
-                  <div>{c.phone}</div>
-                  <div className="text-xs">{c.email}</div>
-                </td>
-                <td className="px-6 py-4">
-                  <Badge variant={c.loyalty === "Gold" ? "default" : "secondary"}>{c.loyalty}</Badge>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => handleMessage(c)}>
-                      <MessageCircle className="w-3.5 h-3.5" /> Message
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(c.id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {customers.length === 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[550px]">
+            <thead className="bg-muted/40 border-b border-border">
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">
-                  No customers found.
-                </td>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">ID</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Name</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Contact</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase whitespace-nowrap">Tier</th>
+                <th className="px-4 sm:px-6 py-3 text-[11px] font-semibold text-muted-foreground uppercase text-right whitespace-nowrap">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredCustomers.map((c) => (
+                <tr key={c.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 font-mono text-xs text-muted-foreground whitespace-nowrap">{c.id}</td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm font-medium whitespace-nowrap">
+                    <button
+                      onClick={() => handleCustomerClick(c)}
+                      className="hover:underline text-primary hover:text-primary/80 transition-colors text-left font-semibold cursor-pointer"
+                    >
+                      {c.name}
+                    </button>
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
+                    <div>{c.phone}</div>
+                    <div className="text-xs">{c.email}</div>
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                    <Badge variant={c.loyalty === "Gold" ? "default" : "secondary"}>{c.loyalty}</Badge>
+                  </td>
+                  <td className="px-4 sm:px-6 py-3 sm:py-4 text-right whitespace-nowrap">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="secondary" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => handleMessage(c)}>
+                        <MessageCircle className="w-3.5 h-3.5" /> Message
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(c.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredCustomers.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    No customers found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Customer Details & History Dialog */}
@@ -223,7 +251,7 @@ function CustomersPage() {
 
       {/* Invoice Reprint Modal */}
       <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
-        <DialogContent className="max-w-[450px] p-0 overflow-hidden ring-1 ring-border shadow-2xl">
+        <DialogContent className="max-w-[480px] max-h-[90vh] overflow-y-auto p-0 ring-1 ring-border shadow-2xl rounded-2xl">
           <div id="print-area" className="p-6 bg-white text-zinc-950 space-y-6">
 
             {/* Invoice Header */}
@@ -318,7 +346,7 @@ function CustomersPage() {
             <Button variant="outline" size="sm" onClick={() => setInvoiceOpen(false)}>
               Close
             </Button>
-            <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => window.print()}>
+            <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => printElement("print-area", `Invoice - ${selectedInvoice?.invoiceNo || "Receipt"}`)}>
               <Printer className="w-3.5 h-3.5" /> Print Invoice
             </Button>
           </div>
